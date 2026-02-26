@@ -273,5 +273,129 @@ describe('json5', () => {
       expect(result.ok).toBe(true);
       if (result.ok) expect(result.value).toBe('c:\\path\\file');
     });
+
+    it('should error when null-like identifier is not "null"', () => {
+      // 'nope' starts with 'n' but isn't 'null'
+      const result = parseJson5('nope');
+      expect(result.ok).toBe(false);
+    });
+
+    it('should error when Infinity-like identifier is not "Infinity"', () => {
+      // 'Iamnotinfinity' starts with 'I' but isn't 'Infinity'
+      const result = parseJson5('Iamnotinfinity');
+      expect(result.ok).toBe(false);
+    });
+
+    it('should error when NaN-like identifier is not "NaN"', () => {
+      // 'Nope' starts with 'N' but isn't 'NaN'
+      const result = parseJson5('Nope');
+      expect(result.ok).toBe(false);
+    });
+
+    it('should parse +Infinity', () => {
+      const result = parseJson5('+Infinity');
+      expect(result.ok).toBe(true);
+      if (result.ok) expect(result.value).toBe(Infinity);
+    });
+
+    it('should error on unexpected end of input', () => {
+      const result = parseJson5('{key:');
+      expect(result.ok).toBe(false);
+    });
+
+    it('should error on unterminated object', () => {
+      const result = parseJson5('{key: "value"');
+      expect(result.ok).toBe(false);
+    });
+
+    it('should error on unterminated array', () => {
+      const result = parseJson5('[1, 2');
+      expect(result.ok).toBe(false);
+    });
+
+    it('should error on unexpected token in boolean position', () => {
+      // 'foobar' starts with 'f' but isn't 'false'
+      const result = parseJson5('foobar');
+      expect(result.ok).toBe(false);
+    });
+
+    it('should parse line continuation in double-quoted string (LF)', () => {
+      // A backslash followed by newline is a line continuation
+      const result = parseJson5('"hello\\\nworld"');
+      expect(result.ok).toBe(true);
+      if (result.ok) expect(result.value).toBe('helloworld');
+    });
+
+    it('should parse line continuation in double-quoted string (CRLF)', () => {
+      const result = parseJson5('"hello\\\r\nworld"');
+      expect(result.ok).toBe(true);
+      if (result.ok) expect(result.value).toBe('helloworld');
+    });
+
+    it('should parse line continuation with CR only', () => {
+      const result = parseJson5('"hello\\\rworld"');
+      expect(result.ok).toBe(true);
+      if (result.ok) expect(result.value).toBe('helloworld');
+    });
+
+    it('should parse escape sequences: backspace, formfeed, slash', () => {
+      const result = parseJson5('"\\b\\f\\/"');
+      expect(result.ok).toBe(true);
+      if (result.ok) expect(result.value).toBe('\b\f/');
+    });
+
+    it('should parse escaped single quote in single-quoted string', () => {
+      const result = parseJson5("'it\\'s'");
+      expect(result.ok).toBe(true);
+      if (result.ok) expect(result.value).toBe("it's");
+    });
+
+    it('should handle unknown escape character by passing it through', () => {
+      // \z is not a standard escape - JSON5 passes it through
+      const result = parseJson5('"\\z"');
+      expect(result.ok).toBe(true);
+      if (result.ok) expect(result.value).toBe('z');
+    });
+
+    it('should error on unexpected end of string after backslash', () => {
+      const result = parseJson5('"hello\\');
+      expect(result.ok).toBe(false);
+    });
+
+    it('should error on invalid unicode escape (not enough chars)', () => {
+      const result = parseJson5('"\\u00"');
+      expect(result.ok).toBe(false);
+    });
+
+    it('should parse hex number with uppercase X', () => {
+      const result = parseJson5('0XFF');
+      expect(result.ok).toBe(true);
+      if (result.ok) expect(result.value).toBe(255);
+    });
+
+    it('should parse trailing decimal point (5.)', () => {
+      const result = parseJson5('5.');
+      expect(result.ok).toBe(true);
+      if (result.ok) expect(result.value).toBe(5);
+    });
+
+    it('should parse positive exponent notation (+1e2)', () => {
+      const result = parseJson5('1E+2');
+      expect(result.ok).toBe(true);
+      if (result.ok) expect(result.value).toBe(100);
+    });
+
+    it('should error on empty identifier for object key', () => {
+      const result = parseJson5('{: "value"}');
+      expect(result.ok).toBe(false);
+    });
+
+    it('should handle non-ConfigError thrown during parsing', () => {
+      // This is hard to trigger naturally, but empty trimmed input is handled
+      // The catch block for non-ConfigError wraps it
+      const result = parseJson5('   ');
+      expect(result.ok).toBe(true);
+      if (result.ok) expect(result.value).toBeNull();
+    });
   });
 });

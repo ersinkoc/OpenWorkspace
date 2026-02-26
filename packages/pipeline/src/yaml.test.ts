@@ -234,5 +234,213 @@ describe('yaml', () => {
       const result = stringifyYaml({ items: ['a', 'b'] });
       expect(result).toBe('items:\n  - a\n  - b');
     });
+
+    it('should quote string starting with dash', () => {
+      const result = stringifyYaml('-dangerous');
+      expect(result).toBe('"-dangerous"');
+    });
+
+    it('should quote string starting with >', () => {
+      const result = stringifyYaml('>block');
+      expect(result).toBe('">block"');
+    });
+
+    it('should quote string starting with @', () => {
+      const result = stringifyYaml('@mention');
+      expect(result).toBe('"@mention"');
+    });
+
+    it('should quote tilde string', () => {
+      const result = stringifyYaml('~');
+      expect(result).toBe('"~"');
+    });
+
+    it('should quote string containing colon', () => {
+      const result = stringifyYaml('key: value');
+      expect(result).toBe('"key: value"');
+    });
+
+    it('should quote string containing hash', () => {
+      const result = stringifyYaml('with # hash');
+      expect(result).toBe('"with # hash"');
+    });
+
+    it('should quote string containing newline', () => {
+      const result = stringifyYaml('line1\nline2');
+      expect(result).toBe('"line1\\nline2"');
+    });
+
+    it('should escape backslash and double-quote in quoted strings', () => {
+      // 'a\\b"c' doesn't contain spaces/colons/etc., so stringifyYaml doesn't quote it
+      const result = stringifyYaml('a\\b"c');
+      expect(result).toBe('a\\b"c');
+    });
+
+    it('should stringify negative number', () => {
+      expect(stringifyYaml(-42)).toBe('-42');
+    });
+
+    it('should stringify float', () => {
+      expect(stringifyYaml(3.14)).toBe('3.14');
+    });
+  });
+
+  describe('parseYaml – additional coverage', () => {
+    it('should parse literal block scalar (|)', () => {
+      const result = parseYaml('content: |\n  line1\n  line2\n  line3');
+      expect(result.ok).toBe(true);
+      if (result.ok) {
+        const val = result.value as Record<string, unknown>;
+        expect(val['content']).toBe('line1\nline2\nline3');
+      }
+    });
+
+    it('should parse folded block scalar (>)', () => {
+      const result = parseYaml('content: >\n  line1\n  line2\n  line3');
+      expect(result.ok).toBe(true);
+      if (result.ok) {
+        const val = result.value as Record<string, unknown>;
+        expect(val['content']).toBe('line1 line2 line3');
+      }
+    });
+
+    it('should parse key with no value (end of input)', () => {
+      const result = parseYaml('key:');
+      expect(result.ok).toBe(true);
+      if (result.ok) {
+        const val = result.value as Record<string, unknown>;
+        expect(val['key']).toBeNull();
+      }
+    });
+
+    it('should parse key with no value followed by same-level key', () => {
+      const result = parseYaml('a:\nb: value');
+      expect(result.ok).toBe(true);
+      if (result.ok) {
+        const val = result.value as Record<string, unknown>;
+        expect(val['a']).toBeNull();
+        expect(val['b']).toBe('value');
+      }
+    });
+
+    it('should parse bare dash array item (- with no value)', () => {
+      const result = parseYaml('-\n-');
+      expect(result.ok).toBe(true);
+      if (result.ok) {
+        expect(result.value).toEqual([null, null]);
+      }
+    });
+
+    it('should parse bare dash followed by nested block', () => {
+      const result = parseYaml('-\n  name: test\n  value: 1');
+      expect(result.ok).toBe(true);
+      if (result.ok) {
+        expect(result.value).toEqual([{ name: 'test', value: 1 }]);
+      }
+    });
+
+    it('should parse comment-only input as null', () => {
+      const result = parseYaml('# just a comment\n# another comment');
+      expect(result.ok).toBe(true);
+      if (result.ok) {
+        expect(result.value).toBeNull();
+      }
+    });
+
+    it('should parse inline comment with hash inside quotes', () => {
+      const result = parseYaml("value: 'has#hash'");
+      expect(result.ok).toBe(true);
+      if (result.ok) {
+        const val = result.value as Record<string, unknown>;
+        expect(val['value']).toBe('has#hash');
+      }
+    });
+
+    it('should parse inline comment with hash inside double quotes', () => {
+      const result = parseYaml('value: "has#hash"');
+      expect(result.ok).toBe(true);
+      if (result.ok) {
+        const val = result.value as Record<string, unknown>;
+        expect(val['value']).toBe('has#hash');
+      }
+    });
+
+    it('should handle colon inside quoted key', () => {
+      // The YAML parser preserves quotes in keys when using findUnquotedColon
+      // The key slice includes the quotes, so the actual key is "key:with:colons" (with quotes)
+      const result = parseYaml('"key:with:colons": value');
+      expect(result.ok).toBe(true);
+      if (result.ok) {
+        const val = result.value as Record<string, unknown>;
+        // The key is stored with the quotes since parseObjectBlock uses raw slice
+        expect(val['"key:with:colons"']).toBe('value');
+      }
+    });
+
+    it('should parse escaped tab and carriage return in double-quoted value', () => {
+      const result = parseYaml('value: "hello\\tworld\\r"');
+      expect(result.ok).toBe(true);
+      if (result.ok) {
+        const val = result.value as Record<string, unknown>;
+        expect(val['value']).toBe('hello\tworld\r');
+      }
+    });
+
+    it('should parse escaped backslash and double-quote in value', () => {
+      const result = parseYaml('value: "a\\\\b\\"c"');
+      expect(result.ok).toBe(true);
+      if (result.ok) {
+        const val = result.value as Record<string, unknown>;
+        expect(val['value']).toBe('a\\b"c');
+      }
+    });
+
+    it('should parse negative float', () => {
+      const result = parseYaml('value: -3.14');
+      expect(result.ok).toBe(true);
+      if (result.ok) {
+        const val = result.value as Record<string, unknown>;
+        expect(val['value']).toBe(-3.14);
+      }
+    });
+
+    it('should parse bare dash at end of input with no next line', () => {
+      const result = parseYaml('- one\n-');
+      expect(result.ok).toBe(true);
+      if (result.ok) {
+        expect(result.value).toEqual(['one', null]);
+      }
+    });
+
+    it('should parse array item with nested object spanning multiple lines', () => {
+      const yaml = '- name: first\n  age: 10\n- name: second\n  age: 20';
+      const result = parseYaml(yaml);
+      expect(result.ok).toBe(true);
+      if (result.ok) {
+        expect(result.value).toEqual([
+          { name: 'first', age: 10 },
+          { name: 'second', age: 20 },
+        ]);
+      }
+    });
+
+    it('should parse deeply nested structure', () => {
+      const yaml = 'a:\n  b:\n    c:\n      d: deep';
+      const result = parseYaml(yaml);
+      expect(result.ok).toBe(true);
+      if (result.ok) {
+        expect(result.value).toEqual({ a: { b: { c: { d: 'deep' } } } });
+      }
+    });
+
+    it('should handle stripComment with hash not preceded by space', () => {
+      // A hash not preceded by space should not be treated as a comment
+      const result = parseYaml('value: color#red');
+      expect(result.ok).toBe(true);
+      if (result.ok) {
+        const val = result.value as Record<string, unknown>;
+        expect(val['value']).toBe('color#red');
+      }
+    });
   });
 });

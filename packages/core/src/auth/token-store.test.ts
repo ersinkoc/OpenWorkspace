@@ -231,6 +231,92 @@ describe('token-store', () => {
     });
   });
 
+  describe('createFileTokenStore – error paths', () => {
+    let tempDir: string;
+
+    beforeEach(async () => {
+      tempDir = path.join(os.tmpdir(), `ows-test-err-${Date.now()}-${Math.random().toString(36).slice(2)}`);
+      await fs.mkdir(tempDir, { recursive: true });
+    });
+
+    afterEach(async () => {
+      await fs.rm(tempDir, { recursive: true, force: true });
+    });
+
+    it('should return error when readTokens fails with corrupted file', async () => {
+      // Write a file that is not valid encrypted data
+      const filePath = path.join(tempDir, 'tokens.enc');
+      await fs.writeFile(filePath, 'not-encrypted-data', 'utf8');
+
+      const store = createFileTokenStore('some-password', tempDir);
+      const result = await store.get('user@example.com');
+      // The decrypt call should fail
+      expect(result.ok).toBe(false);
+    });
+
+    it('should return error when ensureDir fails during set()', async () => {
+      // Use a config dir path that's a file (not a dir) to force mkdir to fail
+      const blockerFile = path.join(tempDir, 'blocker');
+      await fs.writeFile(blockerFile, 'I am a file', 'utf8');
+      // Try to use a path nested under the file - mkdir should fail
+      const badDir = path.join(blockerFile, 'subdir');
+
+      const store = createFileTokenStore('test-password', badDir);
+      const result = await store.set('user@example.com', testToken);
+      expect(result.ok).toBe(false);
+      if (!result.ok) {
+        // readTokens is called first inside set(), and its ensureDir fails
+        expect(result.error.message).toContain('Failed to read token store');
+      }
+    });
+
+    it('should return error when writeTokens fails on clear()', async () => {
+      // clear() calls writeTokens directly (bypasses readTokens)
+      const blockerFile = path.join(tempDir, 'blocker');
+      await fs.writeFile(blockerFile, 'I am a file', 'utf8');
+      const badDir = path.join(blockerFile, 'subdir');
+
+      const store = createFileTokenStore('test-password', badDir);
+      const result = await store.clear();
+      expect(result.ok).toBe(false);
+      if (!result.ok) {
+        expect(result.error.message).toContain('Failed to write token store');
+      }
+    });
+
+    it('should return error when readTokens encounters a read error', async () => {
+      // Create the file as a directory so readFile fails
+      const tokensPath = path.join(tempDir, 'tokens.enc');
+      await fs.mkdir(tokensPath, { recursive: true });
+
+      const store = createFileTokenStore('test-password', tempDir);
+      const result = await store.get('user@example.com');
+      expect(result.ok).toBe(false);
+      if (!result.ok) {
+        expect(result.error.message).toContain('Failed to read token store');
+      }
+    });
+
+    it('should propagate readTokens error through list()', async () => {
+      // Create the file as a directory so readFile fails
+      const tokensPath = path.join(tempDir, 'tokens.enc');
+      await fs.mkdir(tokensPath, { recursive: true });
+
+      const store = createFileTokenStore('test-password', tempDir);
+      const result = await store.list();
+      expect(result.ok).toBe(false);
+    });
+
+    it('should propagate readTokens error through remove()', async () => {
+      const tokensPath = path.join(tempDir, 'tokens.enc');
+      await fs.mkdir(tokensPath, { recursive: true });
+
+      const store = createFileTokenStore('test-password', tempDir);
+      const result = await store.remove('user@example.com');
+      expect(result.ok).toBe(false);
+    });
+  });
+
   describe('getDefaultConfigDir', () => {
     it('should return a non-empty path', () => {
       const dir = getDefaultConfigDir();

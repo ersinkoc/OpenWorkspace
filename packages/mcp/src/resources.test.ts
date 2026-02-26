@@ -1,10 +1,26 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
 import {
   createResourceRegistry,
   registerCalendarResources,
   registerDriveResources,
 } from './resources.js';
-import type { Resource, ResourceTemplate, ResourceContent } from './resources.js';
+import type { Resource, ResourceTemplate, ResourceContent, ResourceRegistry } from './resources.js';
+import type { HttpClient } from '@openworkspace/core';
+
+// ---------------------------------------------------------------------------
+// Mock service packages
+// ---------------------------------------------------------------------------
+
+vi.mock('@openworkspace/calendar', () => ({
+  calendar: vi.fn(),
+}));
+
+vi.mock('@openworkspace/drive', () => ({
+  createDriveApi: vi.fn(),
+}));
+
+import { calendar as createCalendarApi } from '@openworkspace/calendar';
+import { createDriveApi } from '@openworkspace/drive';
 
 describe('createResourceRegistry', () => {
   it('creates an empty registry', () => {
@@ -216,5 +232,242 @@ describe('registerDriveResources', () => {
     expect(result).not.toBeNull();
     const data = JSON.parse(result!.text!);
     expect(data.fileId).toBe('abc123');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Authenticated Calendar Resources (HttpClient provided)
+// ---------------------------------------------------------------------------
+
+describe('registerCalendarResources with HttpClient', () => {
+  const mockHttp = {} as HttpClient;
+  const mockCalendarApi = {
+    listEvents: vi.fn(),
+  };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.mocked(createCalendarApi).mockReturnValue(mockCalendarApi as any);
+  });
+
+  it('reads calendar://primary/events with real API on success', async () => {
+    mockCalendarApi.listEvents.mockResolvedValue({
+      ok: true,
+      value: { items: [{ id: 'ev1', summary: 'Standup' }] },
+    });
+
+    const registry = createResourceRegistry();
+    registerCalendarResources(registry, mockHttp);
+
+    const result = await registry.read('calendar://primary/events');
+    expect(result).not.toBeNull();
+    expect(result!.mimeType).toBe('application/json');
+
+    const data = JSON.parse(result!.text!);
+    expect(data).toEqual({ items: [{ id: 'ev1', summary: 'Standup' }] });
+    expect(mockCalendarApi.listEvents).toHaveBeenCalledWith('primary', expect.objectContaining({
+      singleEvents: true,
+      orderBy: 'startTime',
+    }));
+  });
+
+  it('reads calendar://primary/events with real API on error', async () => {
+    mockCalendarApi.listEvents.mockResolvedValue({
+      ok: false,
+      error: { message: 'Calendar auth failed' },
+    });
+
+    const registry = createResourceRegistry();
+    registerCalendarResources(registry, mockHttp);
+
+    const result = await registry.read('calendar://primary/events');
+    expect(result).not.toBeNull();
+
+    const data = JSON.parse(result!.text!);
+    expect(data).toEqual({ error: 'Calendar auth failed' });
+  });
+
+  it('reads calendar://{calendarId}/events template with real API on success', async () => {
+    mockCalendarApi.listEvents.mockResolvedValue({
+      ok: true,
+      value: { items: [{ id: 'ev2' }] },
+    });
+
+    const registry = createResourceRegistry();
+    registerCalendarResources(registry, mockHttp);
+
+    const result = await registry.read('calendar://work/events');
+    expect(result).not.toBeNull();
+
+    const data = JSON.parse(result!.text!);
+    expect(data).toEqual({ items: [{ id: 'ev2' }] });
+    expect(mockCalendarApi.listEvents).toHaveBeenCalledWith('work', expect.objectContaining({
+      singleEvents: true,
+      orderBy: 'startTime',
+    }));
+  });
+
+  it('reads calendar://{calendarId}/events template with real API on error', async () => {
+    mockCalendarApi.listEvents.mockResolvedValue({
+      ok: false,
+      error: { message: 'Not authorized' },
+    });
+
+    const registry = createResourceRegistry();
+    registerCalendarResources(registry, mockHttp);
+
+    const result = await registry.read('calendar://work/events');
+    expect(result).not.toBeNull();
+
+    const data = JSON.parse(result!.text!);
+    expect(data).toEqual({ error: 'Not authorized' });
+  });
+
+  it('passes time bounds covering today', async () => {
+    mockCalendarApi.listEvents.mockResolvedValue({
+      ok: true,
+      value: { items: [] },
+    });
+
+    const registry = createResourceRegistry();
+    registerCalendarResources(registry, mockHttp);
+
+    await registry.read('calendar://primary/events');
+
+    const call = mockCalendarApi.listEvents.mock.calls[0];
+    expect(call[1]).toHaveProperty('timeMin');
+    expect(call[1]).toHaveProperty('timeMax');
+    // timeMin and timeMax should be valid ISO strings
+    expect(() => new Date(call[1].timeMin)).not.toThrow();
+    expect(() => new Date(call[1].timeMax)).not.toThrow();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Authenticated Drive Resources (HttpClient provided)
+// ---------------------------------------------------------------------------
+
+describe('registerDriveResources with HttpClient', () => {
+  const mockHttp = {} as HttpClient;
+  const mockDriveApiObj = {
+    listFiles: vi.fn(),
+    searchFiles: vi.fn(),
+    getFile: vi.fn(),
+  };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.mocked(createDriveApi).mockReturnValue(mockDriveApiObj as any);
+  });
+
+  // -- drive://recent -------------------------------------------------------
+
+  it('reads drive://recent with real API on success', async () => {
+    mockDriveApiObj.listFiles.mockResolvedValue({
+      ok: true,
+      value: { files: [{ id: 'f1', name: 'report.doc' }] },
+    });
+
+    const registry = createResourceRegistry();
+    registerDriveResources(registry, mockHttp);
+
+    const result = await registry.read('drive://recent');
+    expect(result).not.toBeNull();
+    expect(result!.mimeType).toBe('application/json');
+
+    const data = JSON.parse(result!.text!);
+    expect(data).toEqual({ files: [{ id: 'f1', name: 'report.doc' }] });
+    expect(mockDriveApiObj.listFiles).toHaveBeenCalledWith({
+      orderBy: 'modifiedTime desc',
+      pageSize: 10,
+    });
+  });
+
+  it('reads drive://recent with real API on error', async () => {
+    mockDriveApiObj.listFiles.mockResolvedValue({
+      ok: false,
+      error: { message: 'Drive auth failed' },
+    });
+
+    const registry = createResourceRegistry();
+    registerDriveResources(registry, mockHttp);
+
+    const result = await registry.read('drive://recent');
+    expect(result).not.toBeNull();
+
+    const data = JSON.parse(result!.text!);
+    expect(data).toEqual({ error: 'Drive auth failed' });
+  });
+
+  // -- drive://shared -------------------------------------------------------
+
+  it('reads drive://shared with real API on success', async () => {
+    mockDriveApiObj.searchFiles.mockResolvedValue({
+      ok: true,
+      value: { files: [{ id: 'f2', name: 'shared.doc' }] },
+    });
+
+    const registry = createResourceRegistry();
+    registerDriveResources(registry, mockHttp);
+
+    const result = await registry.read('drive://shared');
+    expect(result).not.toBeNull();
+
+    const data = JSON.parse(result!.text!);
+    expect(data).toEqual({ files: [{ id: 'f2', name: 'shared.doc' }] });
+    expect(mockDriveApiObj.searchFiles).toHaveBeenCalledWith('sharedWithMe=true', {
+      pageSize: 10,
+    });
+  });
+
+  it('reads drive://shared with real API on error', async () => {
+    mockDriveApiObj.searchFiles.mockResolvedValue({
+      ok: false,
+      error: { message: 'Shared error' },
+    });
+
+    const registry = createResourceRegistry();
+    registerDriveResources(registry, mockHttp);
+
+    const result = await registry.read('drive://shared');
+    expect(result).not.toBeNull();
+
+    const data = JSON.parse(result!.text!);
+    expect(data).toEqual({ error: 'Shared error' });
+  });
+
+  // -- drive://{fileId}/metadata --------------------------------------------
+
+  it('reads drive://{fileId}/metadata with real API on success', async () => {
+    mockDriveApiObj.getFile.mockResolvedValue({
+      ok: true,
+      value: { id: 'f3', name: 'readme.md', mimeType: 'text/markdown' },
+    });
+
+    const registry = createResourceRegistry();
+    registerDriveResources(registry, mockHttp);
+
+    const result = await registry.read('drive://f3/metadata');
+    expect(result).not.toBeNull();
+
+    const data = JSON.parse(result!.text!);
+    expect(data).toEqual({ id: 'f3', name: 'readme.md', mimeType: 'text/markdown' });
+    expect(mockDriveApiObj.getFile).toHaveBeenCalledWith('f3');
+  });
+
+  it('reads drive://{fileId}/metadata with real API on error', async () => {
+    mockDriveApiObj.getFile.mockResolvedValue({
+      ok: false,
+      error: { message: 'File not found' },
+    });
+
+    const registry = createResourceRegistry();
+    registerDriveResources(registry, mockHttp);
+
+    const result = await registry.read('drive://badid/metadata');
+    expect(result).not.toBeNull();
+
+    const data = JSON.parse(result!.text!);
+    expect(data).toEqual({ error: 'File not found' });
   });
 });

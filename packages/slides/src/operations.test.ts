@@ -8,7 +8,7 @@ import type { HttpClient, HttpResponse, Result } from '@openworkspace/core';
 import { ok, err, NetworkError } from '@openworkspace/core';
 
 import { getPresentation, createPresentation, getSlide } from './presentations.js';
-import { batchUpdate, addSlide, deleteSlide, replaceAllText } from './slide-ops.js';
+import { batchUpdate, addSlide, deleteSlide, replaceAllText, updateSpeakerNotes } from './slide-ops.js';
 import { exportPresentation } from './export.js';
 
 // ---------------------------------------------------------------------------
@@ -158,6 +158,75 @@ describe('slide-ops operations', () => {
     it('should propagate error', async () => {
       vi.mocked(http.post).mockResolvedValueOnce(mockErr('fail', 500));
       const result = await replaceAllText(http, 'x', 'a', 'b');
+      expect(result.ok).toBe(false);
+    });
+  });
+
+  describe('updateSpeakerNotes', () => {
+    it('should update speaker notes for a slide', async () => {
+      // getPresentation call
+      vi.mocked(http.get).mockResolvedValueOnce(mockOk({
+        presentationId: 'p1',
+        slides: [{
+          objectId: 'slide1',
+          slideProperties: {
+            notesPage: {
+              notesProperties: { speakerNotesObjectId: 'notes1' },
+            },
+          },
+        }],
+      }));
+      // batchUpdate call
+      vi.mocked(http.post).mockResolvedValueOnce(mockOk({ presentationId: 'p1', replies: [] }));
+
+      const result = await updateSpeakerNotes(http, 'p1', 'slide1', 'New notes');
+      expect(result.ok).toBe(true);
+    });
+
+    it('should return error when getPresentation fails', async () => {
+      vi.mocked(http.get).mockResolvedValueOnce(mockErr('fail', 500));
+      const result = await updateSpeakerNotes(http, 'p1', 'slide1', 'Notes');
+      expect(result.ok).toBe(false);
+    });
+
+    it('should return error when slide not found', async () => {
+      vi.mocked(http.get).mockResolvedValueOnce(mockOk({
+        presentationId: 'p1',
+        slides: [{ objectId: 'other' }],
+      }));
+      const result = await updateSpeakerNotes(http, 'p1', 'nonexistent', 'Notes');
+      expect(result.ok).toBe(false);
+    });
+
+    it('should return error when no notes object found', async () => {
+      vi.mocked(http.get).mockResolvedValueOnce(mockOk({
+        presentationId: 'p1',
+        slides: [{ objectId: 'slide1', slideProperties: {} }],
+      }));
+      const result = await updateSpeakerNotes(http, 'p1', 'slide1', 'Notes');
+      expect(result.ok).toBe(false);
+    });
+
+    it('should return error when batchUpdate fails', async () => {
+      vi.mocked(http.get).mockResolvedValueOnce(mockOk({
+        presentationId: 'p1',
+        slides: [{
+          objectId: 'slide1',
+          slideProperties: {
+            notesPage: {
+              notesProperties: { speakerNotesObjectId: 'notes1' },
+            },
+          },
+        }],
+      }));
+      vi.mocked(http.post).mockResolvedValueOnce(mockErr('fail', 500));
+      const result = await updateSpeakerNotes(http, 'p1', 'slide1', 'Notes');
+      expect(result.ok).toBe(false);
+    });
+
+    it('should handle non-WorkspaceError wrapping', async () => {
+      vi.mocked(http.get).mockResolvedValueOnce(err(new Error('raw') as unknown as NetworkError));
+      const result = await updateSpeakerNotes(http, 'p1', 'slide1', 'Notes');
       expect(result.ok).toBe(false);
     });
   });

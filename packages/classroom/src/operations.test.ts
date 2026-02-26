@@ -52,6 +52,14 @@ describe('courses operations', () => {
       expect(vi.mocked(http.get).mock.calls[0]?.[0]).toContain('/courses');
     });
 
+    it('should include query params in URL', async () => {
+      vi.mocked(http.get).mockResolvedValueOnce(mockOk({ courses: [] }));
+      await listCourses(http, { pageSize: 10, pageToken: 'next' });
+      const url = vi.mocked(http.get).mock.calls[0]?.[0] as string;
+      expect(url).toContain('pageSize=10');
+      expect(url).toContain('pageToken=next');
+    });
+
     it('should propagate error', async () => {
       vi.mocked(http.get).mockResolvedValueOnce(mockErr('fail', 500));
       const result = await listCourses(http);
@@ -151,6 +159,20 @@ describe('roster operations', () => {
       const result = await listStudents(http, 'c1');
       expect(result.ok).toBe(true);
       expect(vi.mocked(http.get).mock.calls[0]?.[0]).toContain('/courses/c1/students');
+    });
+
+    it('should include query params', async () => {
+      vi.mocked(http.get).mockResolvedValueOnce(mockOk({ students: [] }));
+      await listStudents(http, 'c1', { pageSize: 10, pageToken: 'tok' });
+      const url = vi.mocked(http.get).mock.calls[0]?.[0] as string;
+      expect(url).toContain('pageSize=10');
+      expect(url).toContain('pageToken=tok');
+    });
+
+    it('should wrap non-WorkspaceError', async () => {
+      vi.mocked(http.get).mockResolvedValueOnce(err(new Error('raw') as unknown as NetworkError));
+      const result = await listStudents(http, 'c1');
+      expect(result.ok).toBe(false);
     });
 
     it('should propagate error', async () => {
@@ -254,6 +276,20 @@ describe('coursework operations', () => {
       expect(vi.mocked(http.get).mock.calls[0]?.[0]).toContain('/courses/c1/courseWork');
     });
 
+    it('should include query params', async () => {
+      vi.mocked(http.get).mockResolvedValueOnce(mockOk({ courseWork: [] }));
+      await listCourseWork(http, 'c1', { pageSize: 5, pageToken: 'tok' });
+      const url = vi.mocked(http.get).mock.calls[0]?.[0] as string;
+      expect(url).toContain('pageSize=5');
+      expect(url).toContain('pageToken=tok');
+    });
+
+    it('should wrap non-WorkspaceError', async () => {
+      vi.mocked(http.get).mockResolvedValueOnce(err(new Error('raw') as unknown as NetworkError));
+      const result = await listCourseWork(http, 'c1');
+      expect(result.ok).toBe(false);
+    });
+
     it('should propagate error', async () => {
       vi.mocked(http.get).mockResolvedValueOnce(mockErr('fail', 500));
       const result = await listCourseWork(http, 'x');
@@ -337,6 +373,20 @@ describe('submissions operations', () => {
       expect(vi.mocked(http.get).mock.calls[0]?.[0]).toContain('/studentSubmissions');
     });
 
+    it('should include query params', async () => {
+      vi.mocked(http.get).mockResolvedValueOnce(mockOk({ studentSubmissions: [] }));
+      await listSubmissions(http, 'c1', 'w1', { pageSize: 10, pageToken: 'tok' });
+      const url = vi.mocked(http.get).mock.calls[0]?.[0] as string;
+      expect(url).toContain('pageSize=10');
+      expect(url).toContain('pageToken=tok');
+    });
+
+    it('should wrap non-WorkspaceError', async () => {
+      vi.mocked(http.get).mockResolvedValueOnce(err(new Error('raw') as unknown as NetworkError));
+      const result = await listSubmissions(http, 'c1', 'w1');
+      expect(result.ok).toBe(false);
+    });
+
     it('should propagate error', async () => {
       vi.mocked(http.get).mockResolvedValueOnce(mockErr('fail', 500));
       const result = await listSubmissions(http, 'x', 'y');
@@ -410,6 +460,20 @@ describe('announcements operations', () => {
       expect(vi.mocked(http.get).mock.calls[0]?.[0]).toContain('/announcements');
     });
 
+    it('should include query params', async () => {
+      vi.mocked(http.get).mockResolvedValueOnce(mockOk({ announcements: [] }));
+      await listAnnouncements(http, 'c1', { pageSize: 5, pageToken: 'tok' });
+      const url = vi.mocked(http.get).mock.calls[0]?.[0] as string;
+      expect(url).toContain('pageSize=5');
+      expect(url).toContain('pageToken=tok');
+    });
+
+    it('should wrap non-WorkspaceError', async () => {
+      vi.mocked(http.get).mockResolvedValueOnce(err(new Error('raw') as unknown as NetworkError));
+      const result = await listAnnouncements(http, 'c1');
+      expect(result.ok).toBe(false);
+    });
+
     it('should propagate error', async () => {
       vi.mocked(http.get).mockResolvedValueOnce(mockErr('fail', 500));
       const result = await listAnnouncements(http, 'x');
@@ -462,6 +526,20 @@ describe('guardians operations', () => {
       const result = await listGuardians(http, 'me');
       expect(result.ok).toBe(true);
       expect(vi.mocked(http.get).mock.calls[0]?.[0]).toContain('/userProfiles/me/guardians');
+    });
+
+    it('should include query params', async () => {
+      vi.mocked(http.get).mockResolvedValueOnce(mockOk({ guardians: [] }));
+      await listGuardians(http, 'me', { pageSize: 5, pageToken: 'tok' });
+      const url = vi.mocked(http.get).mock.calls[0]?.[0] as string;
+      expect(url).toContain('pageSize=5');
+      expect(url).toContain('pageToken=tok');
+    });
+
+    it('should wrap non-WorkspaceError', async () => {
+      vi.mocked(http.get).mockResolvedValueOnce(err(new Error('raw') as unknown as NetworkError));
+      const result = await listGuardians(http, 'me');
+      expect(result.ok).toBe(false);
     });
 
     it('should propagate error', async () => {

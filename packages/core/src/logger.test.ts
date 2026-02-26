@@ -144,6 +144,67 @@ describe('logger', () => {
       expect(consoleSink).toBeDefined();
       expect(typeof consoleSink).toBe('function');
     });
+
+    it('should call console.debug for debug level', () => {
+      const spy = vi.spyOn(console, 'debug').mockImplementation(() => {});
+      consoleSink({ level: 'debug', message: 'test debug', timestamp: new Date() });
+      expect(spy).toHaveBeenCalledOnce();
+      expect(spy.mock.calls[0][0]).toContain('test debug');
+      spy.mockRestore();
+    });
+
+    it('should call console.info for info level', () => {
+      const spy = vi.spyOn(console, 'info').mockImplementation(() => {});
+      consoleSink({ level: 'info', message: 'test info', timestamp: new Date() });
+      expect(spy).toHaveBeenCalledOnce();
+      expect(spy.mock.calls[0][0]).toContain('test info');
+      spy.mockRestore();
+    });
+
+    it('should call console.warn for warn level', () => {
+      const spy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+      consoleSink({ level: 'warn', message: 'test warn', timestamp: new Date() });
+      expect(spy).toHaveBeenCalledOnce();
+      expect(spy.mock.calls[0][0]).toContain('test warn');
+      spy.mockRestore();
+    });
+
+    it('should call console.error for error level', () => {
+      const spy = vi.spyOn(console, 'error').mockImplementation(() => {});
+      consoleSink({ level: 'error', message: 'test error', timestamp: new Date() });
+      expect(spy).toHaveBeenCalledOnce();
+      expect(spy.mock.calls[0][0]).toContain('test error');
+      spy.mockRestore();
+    });
+
+    it('should include context in the output when provided', () => {
+      const spy = vi.spyOn(console, 'info').mockImplementation(() => {});
+      consoleSink({
+        level: 'info',
+        message: 'with context',
+        timestamp: new Date(),
+        context: { key: 'value' },
+      });
+      expect(spy).toHaveBeenCalledOnce();
+      const output = spy.mock.calls[0][0] as string;
+      expect(output).toContain('with context');
+      expect(output).toContain('{"key":"value"}');
+      spy.mockRestore();
+    });
+
+    it('should not include context string when no context provided', () => {
+      const spy = vi.spyOn(console, 'info').mockImplementation(() => {});
+      consoleSink({
+        level: 'info',
+        message: 'no context',
+        timestamp: new Date(),
+      });
+      expect(spy).toHaveBeenCalledOnce();
+      const output = spy.mock.calls[0][0] as string;
+      expect(output).toContain('no context');
+      expect(output).not.toContain('{');
+      spy.mockRestore();
+    });
   });
 
   describe('defaultLogger', () => {

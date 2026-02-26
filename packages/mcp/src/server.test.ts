@@ -1,7 +1,11 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { createMcpServer } from './server.js';
 import { createToolRegistry } from './registry.js';
+import { createResourceRegistry, registerCalendarResources, registerDriveResources } from './resources.js';
+import { createPromptRegistry, registerBuiltinPrompts } from './prompts.js';
 import type { ToolRegistry } from './registry.js';
+import type { ResourceRegistry } from './resources.js';
+import type { PromptRegistry } from './prompts.js';
 import type {
   McpServer,
   Transport,
@@ -837,6 +841,413 @@ describe('server', () => {
         });
         expect(response!.id).toBe('abc-def');
         expect(response!.result).toBeDefined();
+      });
+    });
+
+    // -----------------------------------------------------------------------
+    // Resources support
+    // -----------------------------------------------------------------------
+
+    describe('resources', () => {
+      let resourceRegistry: ResourceRegistry;
+      let server: McpServer;
+
+      beforeEach(async () => {
+        resourceRegistry = createResourceRegistry();
+        resourceRegistry.registerResource(
+          {
+            uri: 'test://static',
+            name: 'Static Test',
+            description: 'A static test resource',
+            mimeType: 'application/json',
+          },
+          async (uri) => ({ uri, mimeType: 'application/json', text: '{"ok":true}' }),
+        );
+        resourceRegistry.registerTemplate(
+          {
+            uriTemplate: 'test://{id}/details',
+            name: 'Test Details',
+            description: 'Details by ID',
+            mimeType: 'application/json',
+          },
+          async (uri, params) => ({
+            uri,
+            mimeType: 'application/json',
+            text: JSON.stringify({ id: params['id'] }),
+          }),
+        );
+
+        server = createMcpServer(registry, {
+          name: 'test',
+          version: '1.0',
+          resourceRegistry,
+        });
+        await initializeServer(server);
+      });
+
+      it('should auto-detect resources capability when resourceRegistry is provided', async () => {
+        const srv = createMcpServer(registry, {
+          name: 'test',
+          version: '1.0',
+          resourceRegistry,
+        });
+        const response = await initializeServer(srv);
+        const result = response!.result as Record<string, unknown>;
+        expect(result.capabilities).toHaveProperty('resources');
+      });
+
+      it('should not override explicit resources capability', async () => {
+        const srv = createMcpServer(registry, {
+          name: 'test',
+          version: '1.0',
+          resourceRegistry,
+          capabilities: { resources: { subscribe: true, listChanged: true } },
+        });
+        const response = await initializeServer(srv);
+        const result = response!.result as Record<string, unknown>;
+        expect((result.capabilities as any).resources).toEqual({ subscribe: true, listChanged: true });
+      });
+
+      it('resources/list should return static resources and templates', async () => {
+        const response = await sendRequest(server, {
+          jsonrpc: '2.0',
+          id: 10,
+          method: 'resources/list',
+        });
+        expect(response).not.toBeNull();
+        expect(response!.error).toBeUndefined();
+        const result = response!.result as {
+          resources: Array<Record<string, unknown>>;
+          resourceTemplates: Array<Record<string, unknown>>;
+        };
+        expect(result.resources).toHaveLength(1);
+        expect(result.resources[0]!.uri).toBe('test://static');
+        expect(result.resourceTemplates).toHaveLength(1);
+        expect(result.resourceTemplates[0]!.uriTemplate).toBe('test://{id}/details');
+      });
+
+      it('resources/templates/list should return templates', async () => {
+        const response = await sendRequest(server, {
+          jsonrpc: '2.0',
+          id: 11,
+          method: 'resources/templates/list',
+        });
+        expect(response).not.toBeNull();
+        expect(response!.error).toBeUndefined();
+        const result = response!.result as {
+          resourceTemplates: Array<Record<string, unknown>>;
+        };
+        expect(result.resourceTemplates).toHaveLength(1);
+      });
+
+      it('resources/read should return static resource content', async () => {
+        const response = await sendRequest(server, {
+          jsonrpc: '2.0',
+          id: 12,
+          method: 'resources/read',
+          params: { uri: 'test://static' },
+        });
+        expect(response).not.toBeNull();
+        expect(response!.error).toBeUndefined();
+        const result = response!.result as { contents: Array<Record<string, unknown>> };
+        expect(result.contents).toHaveLength(1);
+        expect(result.contents[0]!.text).toBe('{"ok":true}');
+      });
+
+      it('resources/read should return template resource content', async () => {
+        const response = await sendRequest(server, {
+          jsonrpc: '2.0',
+          id: 13,
+          method: 'resources/read',
+          params: { uri: 'test://42/details' },
+        });
+        expect(response).not.toBeNull();
+        expect(response!.error).toBeUndefined();
+        const result = response!.result as { contents: Array<{ text: string }> };
+        const parsed = JSON.parse(result.contents[0]!.text);
+        expect(parsed.id).toBe('42');
+      });
+
+      it('resources/read should return error for unknown URI', async () => {
+        const response = await sendRequest(server, {
+          jsonrpc: '2.0',
+          id: 14,
+          method: 'resources/read',
+          params: { uri: 'test://nonexistent' },
+        });
+        expect(response).not.toBeNull();
+        expect(response!.error).toBeDefined();
+        expect(response!.error!.code).toBe(-32602);
+        expect(response!.error!.message).toContain('Resource not found');
+      });
+
+      it('resources/read should return error when missing params', async () => {
+        const response = await sendRequest(server, {
+          jsonrpc: '2.0',
+          id: 15,
+          method: 'resources/read',
+        });
+        expect(response).not.toBeNull();
+        expect(response!.error).toBeDefined();
+        expect(response!.error!.code).toBe(-32602);
+        expect(response!.error!.message).toContain('Missing params');
+      });
+
+      it('resources/read should return error when uri is not a string', async () => {
+        const response = await sendRequest(server, {
+          jsonrpc: '2.0',
+          id: 16,
+          method: 'resources/read',
+          params: { uri: 123 },
+        });
+        expect(response).not.toBeNull();
+        expect(response!.error).toBeDefined();
+        expect(response!.error!.code).toBe(-32602);
+        expect(response!.error!.message).toContain('uri');
+      });
+    });
+
+    describe('resources without registry', () => {
+      it('resources/list should return error when no registry', async () => {
+        const srv = createMcpServer(registry, { name: 'test', version: '1.0' });
+        await initializeServer(srv);
+        const response = await sendRequest(srv, {
+          jsonrpc: '2.0',
+          id: 20,
+          method: 'resources/list',
+        });
+        expect(response!.error).toBeDefined();
+        expect(response!.error!.code).toBe(-32601);
+      });
+
+      it('resources/templates/list should return error when no registry', async () => {
+        const srv = createMcpServer(registry, { name: 'test', version: '1.0' });
+        await initializeServer(srv);
+        const response = await sendRequest(srv, {
+          jsonrpc: '2.0',
+          id: 21,
+          method: 'resources/templates/list',
+        });
+        expect(response!.error).toBeDefined();
+        expect(response!.error!.code).toBe(-32601);
+      });
+
+      it('resources/read should return error when no registry', async () => {
+        const srv = createMcpServer(registry, { name: 'test', version: '1.0' });
+        await initializeServer(srv);
+        const response = await sendRequest(srv, {
+          jsonrpc: '2.0',
+          id: 22,
+          method: 'resources/read',
+          params: { uri: 'test://something' },
+        });
+        expect(response!.error).toBeDefined();
+        expect(response!.error!.code).toBe(-32601);
+      });
+    });
+
+    // -----------------------------------------------------------------------
+    // Prompts support
+    // -----------------------------------------------------------------------
+
+    describe('prompts', () => {
+      let promptRegistry: PromptRegistry;
+      let server: McpServer;
+
+      beforeEach(async () => {
+        promptRegistry = createPromptRegistry();
+        promptRegistry.register(
+          {
+            name: 'greet',
+            description: 'Greet someone',
+            arguments: [{ name: 'name', description: 'Name to greet', required: true }],
+          },
+          (args) => [
+            { role: 'user', content: { type: 'text', text: `Hello, ${args['name']}!` } },
+          ],
+        );
+
+        server = createMcpServer(registry, {
+          name: 'test',
+          version: '1.0',
+          promptRegistry,
+        });
+        await initializeServer(server);
+      });
+
+      it('should auto-detect prompts capability when promptRegistry is provided', async () => {
+        const srv = createMcpServer(registry, {
+          name: 'test',
+          version: '1.0',
+          promptRegistry,
+        });
+        const response = await initializeServer(srv);
+        const result = response!.result as Record<string, unknown>;
+        expect(result.capabilities).toHaveProperty('prompts');
+      });
+
+      it('prompts/list should return registered prompts', async () => {
+        const response = await sendRequest(server, {
+          jsonrpc: '2.0',
+          id: 30,
+          method: 'prompts/list',
+        });
+        expect(response).not.toBeNull();
+        expect(response!.error).toBeUndefined();
+        const result = response!.result as { prompts: Array<Record<string, unknown>> };
+        expect(result.prompts).toHaveLength(1);
+        expect(result.prompts[0]!.name).toBe('greet');
+      });
+
+      it('prompts/get should return messages for a prompt', async () => {
+        const response = await sendRequest(server, {
+          jsonrpc: '2.0',
+          id: 31,
+          method: 'prompts/get',
+          params: { name: 'greet', arguments: { name: 'Alice' } },
+        });
+        expect(response).not.toBeNull();
+        expect(response!.error).toBeUndefined();
+        const result = response!.result as { messages: Array<{ role: string; content: { text: string } }> };
+        expect(result.messages).toHaveLength(1);
+        expect(result.messages[0]!.content.text).toBe('Hello, Alice!');
+      });
+
+      it('prompts/get should return error for unknown prompt', async () => {
+        const response = await sendRequest(server, {
+          jsonrpc: '2.0',
+          id: 32,
+          method: 'prompts/get',
+          params: { name: 'nonexistent' },
+        });
+        expect(response).not.toBeNull();
+        expect(response!.error).toBeDefined();
+        expect(response!.error!.code).toBe(-32602);
+        expect(response!.error!.message).toContain('Prompt not found');
+      });
+
+      it('prompts/get should return error when missing params', async () => {
+        const response = await sendRequest(server, {
+          jsonrpc: '2.0',
+          id: 33,
+          method: 'prompts/get',
+        });
+        expect(response).not.toBeNull();
+        expect(response!.error).toBeDefined();
+        expect(response!.error!.code).toBe(-32602);
+        expect(response!.error!.message).toContain('Missing params');
+      });
+
+      it('prompts/get should return error when name is not a string', async () => {
+        const response = await sendRequest(server, {
+          jsonrpc: '2.0',
+          id: 34,
+          method: 'prompts/get',
+          params: { name: 123 },
+        });
+        expect(response).not.toBeNull();
+        expect(response!.error).toBeDefined();
+        expect(response!.error!.code).toBe(-32602);
+        expect(response!.error!.message).toContain('name');
+      });
+
+      it('prompts/get should default arguments to empty object', async () => {
+        // Register a prompt that uses no arguments
+        promptRegistry.register(
+          { name: 'simple', description: 'Simple prompt' },
+          () => [{ role: 'user', content: { type: 'text', text: 'Simple!' } }],
+        );
+
+        const response = await sendRequest(server, {
+          jsonrpc: '2.0',
+          id: 35,
+          method: 'prompts/get',
+          params: { name: 'simple' },
+        });
+        expect(response).not.toBeNull();
+        expect(response!.error).toBeUndefined();
+        const result = response!.result as { messages: Array<{ content: { text: string } }> };
+        expect(result.messages[0]!.content.text).toBe('Simple!');
+      });
+    });
+
+    describe('prompts without registry', () => {
+      it('prompts/list should return error when no registry', async () => {
+        const srv = createMcpServer(registry, { name: 'test', version: '1.0' });
+        await initializeServer(srv);
+        const response = await sendRequest(srv, {
+          jsonrpc: '2.0',
+          id: 40,
+          method: 'prompts/list',
+        });
+        expect(response!.error).toBeDefined();
+        expect(response!.error!.code).toBe(-32601);
+      });
+
+      it('prompts/get should return error when no registry', async () => {
+        const srv = createMcpServer(registry, { name: 'test', version: '1.0' });
+        await initializeServer(srv);
+        const response = await sendRequest(srv, {
+          jsonrpc: '2.0',
+          id: 41,
+          method: 'prompts/get',
+          params: { name: 'greet' },
+        });
+        expect(response!.error).toBeDefined();
+        expect(response!.error!.code).toBe(-32601);
+      });
+    });
+
+    // -----------------------------------------------------------------------
+    // Transport error & message handling edge cases
+    // -----------------------------------------------------------------------
+
+    describe('transport error handling', () => {
+      it('should handle transport onError callback', async () => {
+        const server = createMcpServer(registry, { name: 'test', version: '1.0' });
+        const transport = createMockTransport();
+        const stderrSpy = vi.spyOn(process.stderr, 'write').mockReturnValue(true);
+        await server.connect(transport);
+
+        // Trigger onError
+        transport.onError!(new Error('transport broke'));
+
+        expect(stderrSpy).toHaveBeenCalledWith(
+          expect.stringContaining('transport broke'),
+        );
+        stderrSpy.mockRestore();
+      });
+
+      it('should handle errors thrown by handleMessage during transport processing', async () => {
+        // Register a tool that throws synchronously during handler resolution
+        registry.register({
+          name: 'crash_tool',
+          description: 'Crashes',
+          parameters: {},
+          handler: async () => { throw new Error('crash'); },
+        });
+
+        const server = createMcpServer(registry, { name: 'test', version: '1.0' });
+        const transport = createMockTransport();
+        const stderrSpy = vi.spyOn(process.stderr, 'write').mockReturnValue(true);
+        await server.connect(transport);
+
+        // Initialize first
+        transport.onMessage!(initializeRequest(1));
+        await new Promise((resolve) => setTimeout(resolve, 10));
+
+        // Call the crashing tool via transport
+        transport.onMessage!({
+          jsonrpc: '2.0',
+          id: 2,
+          method: 'tools/call',
+          params: { name: 'crash_tool', arguments: {} },
+        } as JsonRpcRequest);
+        await new Promise((resolve) => setTimeout(resolve, 10));
+
+        // The tool error should be handled gracefully (returned as isError result, not crashing server)
+        expect(transport.messages.length).toBeGreaterThanOrEqual(2);
+        stderrSpy.mockRestore();
       });
     });
   });

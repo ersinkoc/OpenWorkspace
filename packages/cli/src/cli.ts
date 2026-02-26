@@ -57,7 +57,7 @@ const VERSION = '0.1.0';
  * @returns An object with `http` (the authenticated HttpClient) and `account` (the resolved email),
  *          or an error message string on failure.
  */
-async function getAuthenticatedClient(
+export async function getAuthenticatedClient(
   account?: string,
 ): Promise<{ ok: true; value: { http: HttpClient; account: string } } | { ok: false; error: string }> {
   // Load credentials
@@ -117,7 +117,7 @@ async function getAuthenticatedClient(
 /**
  * Generic subcommand dispatcher used by commands with subcommands.
  */
-function createSubcommandDispatcher(
+export function createSubcommandDispatcher(
   commandName: string,
   subcommands: Command[]
 ): (args: ParsedArgs) => Promise<number> {
@@ -136,7 +136,7 @@ function createSubcommandDispatcher(
   };
 }
 
-async function main(): Promise<number> {
+export async function main(): Promise<number> {
   const args = process.argv.slice(2);
   const parsed = parseArgs(args, {
     boolean: ['help', 'version', 'verbose', 'json', 'plain', 'headless', 'device', 'check', 'html', 'today', 'week', 'csv'],
@@ -1889,7 +1889,10 @@ async function main(): Promise<number> {
   return command.handler({ ...parsed.value, _: positional.slice(1) });
 }
 
-main().then(code => process.exit(code)).catch(error => {
-  console.error(error);
-  process.exit(1);
-});
+/* c8 ignore next 5 -- CLI entry bootstrap */
+if (process.env['NODE_ENV'] !== 'test') {
+  main().then(code => process.exit(code)).catch(error => {
+    console.error(error);
+    process.exit(1);
+  });
+}

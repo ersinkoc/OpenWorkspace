@@ -149,6 +149,22 @@ describe('threads operations', () => {
       expect(url).toContain('q=is%3Aunread');
     });
 
+    it('should include labelIds in query string', async () => {
+      vi.mocked(http.get).mockResolvedValueOnce(mockOk({ threads: [], resultSizeEstimate: 0 }));
+      await searchThreads(http, { labelIds: ['INBOX', 'STARRED'] });
+      const url = vi.mocked(http.get).mock.calls[0]?.[0] as string;
+      expect(url).toContain('labelIds=INBOX');
+      expect(url).toContain('labelIds=STARRED');
+    });
+
+    it('should include pageToken and includeSpamTrash in query', async () => {
+      vi.mocked(http.get).mockResolvedValueOnce(mockOk({ threads: [], resultSizeEstimate: 0 }));
+      await searchThreads(http, { pageToken: 'abc', includeSpamTrash: true });
+      const url = vi.mocked(http.get).mock.calls[0]?.[0] as string;
+      expect(url).toContain('pageToken=abc');
+      expect(url).toContain('includeSpamTrash=true');
+    });
+
     it('should propagate error', async () => {
       vi.mocked(http.get).mockResolvedValueOnce(mockErr('fail', 500));
       const result = await searchThreads(http);
@@ -162,6 +178,15 @@ describe('threads operations', () => {
       const result = await getThread(http, { id: 't1' });
       expect(result.ok).toBe(true);
       if (result.ok) expect(result.value.id).toBe('t1');
+    });
+
+    it('should include format and metadataHeaders in query', async () => {
+      vi.mocked(http.get).mockResolvedValueOnce(mockOk({ id: 't1', messages: [] }));
+      await getThread(http, { id: 't1', format: 'metadata', metadataHeaders: ['Subject', 'From'] });
+      const url = vi.mocked(http.get).mock.calls[0]?.[0] as string;
+      expect(url).toContain('format=metadata');
+      expect(url).toContain('metadataHeaders=Subject');
+      expect(url).toContain('metadataHeaders=From');
     });
 
     it('should propagate error', async () => {
@@ -260,6 +285,18 @@ describe('send operations', () => {
       expect(typeof body?.raw).toBe('string');
     });
 
+    it('should send HTML-only message', async () => {
+      vi.mocked(http.post).mockResolvedValueOnce(mockOk({ id: 's2', threadId: 't2' }));
+      const result = await sendMessage(http, { to: 'bob@example.com', subject: 'HTML', html: '<p>Hello</p>' });
+      expect(result.ok).toBe(true);
+    });
+
+    it('should send multipart message with both body and html', async () => {
+      vi.mocked(http.post).mockResolvedValueOnce(mockOk({ id: 's3', threadId: 't3' }));
+      const result = await sendMessage(http, { to: 'bob@example.com', subject: 'Multi', body: 'Text', html: '<p>HTML</p>' });
+      expect(result.ok).toBe(true);
+    });
+
     it('should propagate error', async () => {
       vi.mocked(http.post).mockResolvedValueOnce(mockErr('unauthorized', 401));
       const result = await sendMessage(http, { to: 'a@b.com', subject: 'X', body: 'Y' });
@@ -286,6 +323,16 @@ describe('drafts operations', () => {
       expect(url).toContain('maxResults=5');
     });
 
+    it('should include all query params', async () => {
+      vi.mocked(http.get).mockResolvedValueOnce(mockOk({ drafts: [], resultSizeEstimate: 0 }));
+      await listDrafts(http, { maxResults: 10, pageToken: 'tok123', q: 'subject:test', includeSpamTrash: true });
+      const url = vi.mocked(http.get).mock.calls[0]?.[0] as string;
+      expect(url).toContain('maxResults=10');
+      expect(url).toContain('pageToken=tok123');
+      expect(url).toContain('q=subject%3Atest');
+      expect(url).toContain('includeSpamTrash=true');
+    });
+
     it('should propagate error', async () => {
       vi.mocked(http.get).mockResolvedValueOnce(mockErr('fail', 500));
       const result = await listDrafts(http);
@@ -301,6 +348,40 @@ describe('drafts operations', () => {
       if (result.ok) expect(result.value.id).toBe('d1');
       const body = vi.mocked(http.post).mock.calls[0]?.[1]?.body as Record<string, unknown>;
       expect(body?.message).toBeDefined();
+    });
+
+    it('should create draft with HTML-only body', async () => {
+      vi.mocked(http.post).mockResolvedValueOnce(mockOk({ id: 'd2', message: { id: 'm2', threadId: 't2' } }));
+      const result = await createDraft(http, { to: 'bob@example.com', subject: 'HTML Draft', html: '<b>Bold</b>' });
+      expect(result.ok).toBe(true);
+      if (result.ok) expect(result.value.id).toBe('d2');
+    });
+
+    it('should create draft with both body and HTML (multipart)', async () => {
+      vi.mocked(http.post).mockResolvedValueOnce(mockOk({ id: 'd3', message: { id: 'm3', threadId: 't3' } }));
+      const result = await createDraft(http, {
+        to: 'bob@example.com',
+        subject: 'Multipart Draft',
+        body: 'Plain text version',
+        html: '<p>HTML version</p>',
+      });
+      expect(result.ok).toBe(true);
+      if (result.ok) expect(result.value.id).toBe('d3');
+    });
+
+    it('should include cc, bcc, replyTo, inReplyTo, references headers', async () => {
+      vi.mocked(http.post).mockResolvedValueOnce(mockOk({ id: 'd4', message: { id: 'm4', threadId: 't4' } }));
+      const result = await createDraft(http, {
+        to: ['a@b.com', 'c@d.com'],
+        subject: 'Full Headers',
+        body: 'Content',
+        cc: 'cc@example.com',
+        bcc: ['bcc1@example.com', 'bcc2@example.com'],
+        replyTo: 'reply@example.com',
+        inReplyTo: '<msg123@example.com>',
+        references: '<msg001@example.com>',
+      });
+      expect(result.ok).toBe(true);
     });
 
     it('should propagate error', async () => {

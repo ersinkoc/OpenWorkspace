@@ -211,7 +211,7 @@ describe('dm operations', () => {
 
   describe('createDirectMessage', () => {
     it('should find/create DM space then send message', async () => {
-      // listSpaces call
+      // listSpaces call - no match found
       vi.mocked(http.get).mockResolvedValueOnce(mockOk({ spaces: [{ name: 'spaces/DM1', type: 'DM', displayName: '' }] }));
       // Since no match, creates a new DM space
       vi.mocked(http.post).mockResolvedValueOnce(mockOk({ name: 'spaces/DM_NEW', type: 'DM' }));
@@ -222,8 +222,41 @@ describe('dm operations', () => {
       expect(result.ok).toBe(true);
     });
 
+    it('should reuse existing DM space when found', async () => {
+      // listSpaces returns a DM that contains the userId
+      vi.mocked(http.get).mockResolvedValueOnce(mockOk({
+        spaces: [{ name: 'spaces/users/123/dm', type: 'DM', displayName: '' }],
+      }));
+      // sendMessage call (no create space needed)
+      vi.mocked(http.post).mockResolvedValueOnce(mockOk({ name: 'spaces/users/123/dm/messages/M1', text: 'Hi!' }));
+
+      const result = await createDirectMessage(http, 'users/123', 'Hi!');
+      expect(result.ok).toBe(true);
+      // Only 1 post call (sendMessage), not 2 (create+send)
+      expect(vi.mocked(http.post)).toHaveBeenCalledTimes(1);
+    });
+
     it('should propagate error from listSpaces', async () => {
       vi.mocked(http.get).mockResolvedValueOnce(mockErr('fail', 500));
+      const result = await createDirectMessage(http, 'users/123', 'Hello!');
+      expect(result.ok).toBe(false);
+    });
+
+    it('should propagate error from create DM space', async () => {
+      // listSpaces ok but no match
+      vi.mocked(http.get).mockResolvedValueOnce(mockOk({ spaces: [] }));
+      // create space fails
+      vi.mocked(http.post).mockResolvedValueOnce(mockErr('forbidden', 403));
+
+      const result = await createDirectMessage(http, 'users/123', 'Hello!');
+      expect(result.ok).toBe(false);
+    });
+
+    it('should wrap non-WorkspaceError from create DM space', async () => {
+      vi.mocked(http.get).mockResolvedValueOnce(mockOk({ spaces: [] }));
+      // Return a raw error (not NetworkError/WorkspaceError)
+      vi.mocked(http.post).mockResolvedValueOnce(err(new Error('raw error') as unknown as NetworkError));
+
       const result = await createDirectMessage(http, 'users/123', 'Hello!');
       expect(result.ok).toBe(false);
     });
@@ -238,6 +271,22 @@ describe('dm operations', () => {
       vi.mocked(http.get).mockResolvedValueOnce(mockOk({ messages: [] }));
 
       const result = await listDirectMessages(http, 'users/123');
+      expect(result.ok).toBe(true);
+    });
+
+    it('should propagate error when DM space lookup fails', async () => {
+      vi.mocked(http.get).mockResolvedValueOnce(mockErr('fail', 500));
+      const result = await listDirectMessages(http, 'users/123');
+      expect(result.ok).toBe(false);
+    });
+
+    it('should pass options to listMessages', async () => {
+      vi.mocked(http.get).mockResolvedValueOnce(mockOk({
+        spaces: [{ name: 'spaces/users/456/dm', type: 'DM', displayName: '' }],
+      }));
+      vi.mocked(http.get).mockResolvedValueOnce(mockOk({ messages: [{ name: 'msg1', text: 'Hi' }] }));
+
+      const result = await listDirectMessages(http, 'users/456', { pageSize: 5 });
       expect(result.ok).toBe(true);
     });
   });
