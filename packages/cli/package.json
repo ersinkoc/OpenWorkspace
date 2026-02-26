@@ -33,7 +33,22 @@
   "dependencies": {
     "@openworkspace/core": "workspace:*",
     "@openworkspace/mcp": "workspace:*",
-    "@openworkspace/pipeline": "workspace:*"
+    "@openworkspace/pipeline": "workspace:*",
+    "@openworkspace/gmail": "workspace:*",
+    "@openworkspace/calendar": "workspace:*",
+    "@openworkspace/drive": "workspace:*",
+    "@openworkspace/sheets": "workspace:*",
+    "@openworkspace/docs": "workspace:*",
+    "@openworkspace/slides": "workspace:*",
+    "@openworkspace/contacts": "workspace:*",
+    "@openworkspace/tasks": "workspace:*",
+    "@openworkspace/chat": "workspace:*",
+    "@openworkspace/classroom": "workspace:*",
+    "@openworkspace/forms": "workspace:*",
+    "@openworkspace/appscript": "workspace:*",
+    "@openworkspace/people": "workspace:*",
+    "@openworkspace/groups": "workspace:*",
+    "@openworkspace/keep": "workspace:*"
   },
   "devDependencies": {
     "tsup": "^8.3.6",

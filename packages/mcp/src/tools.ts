@@ -3,26 +3,83 @@
  * Registers tools for Gmail, Calendar, Drive, Sheets, Tasks, Contacts,
  * Docs, Slides, Classroom, Forms, Chat, Keep, Apps Script, People, and Groups.
  *
- * All handlers are stubs that return an authentication prompt.
- * They will be wired to real service APIs in a later phase.
+ * When an authenticated HttpClient is provided, tool handlers call real
+ * service APIs.  Without one they return an authentication prompt so the
+ * MCP server can start even before the user has logged in.
  */
 
 import type { ToolRegistry } from './registry.js';
+import type { HttpClient } from '@openworkspace/core';
+
+import { createGmailApi } from '@openworkspace/gmail';
+import { calendar as createCalendarApi } from '@openworkspace/calendar';
+import { createDriveApi } from '@openworkspace/drive';
+import { createSheetsApi } from '@openworkspace/sheets';
+import { tasks as createTasksApi } from '@openworkspace/tasks';
+import { contacts as createContactsApi } from '@openworkspace/contacts';
+import { createDocsApi } from '@openworkspace/docs';
+import { slides as createSlidesApi } from '@openworkspace/slides';
+import { classroom as createClassroomApi } from '@openworkspace/classroom';
+import { createFormsApi } from '@openworkspace/forms';
+import { chat as createChatApi } from '@openworkspace/chat';
+import { keep as createKeepApi } from '@openworkspace/keep';
+import { appscript as createAppScriptApi } from '@openworkspace/appscript';
+import { people as createPeopleApi } from '@openworkspace/people';
+import { groups as createGroupsApi } from '@openworkspace/groups';
+
+// ---------------------------------------------------------------------------
+// Stub response returned when no HttpClient is available (unauthenticated).
+// ---------------------------------------------------------------------------
 
 /** Stub response returned by all tool handlers until services are wired. */
 const STUB_RESPONSE = {
   message: 'Tool requires authentication. Configure with ows auth add <email>.',
 };
 
-/**
- * Creates a stub handler that returns the authentication prompt.
- */
-function stubHandler(): (params: Record<string, unknown>) => Promise<unknown> {
-  return async () => STUB_RESPONSE;
+// ---------------------------------------------------------------------------
+// Helper: compute today/tomorrow/N-day time bounds for calendar tools.
+// ---------------------------------------------------------------------------
+
+function computeTimeBounds(params: Record<string, unknown>): {
+  timeMin: string;
+  timeMax: string;
+} | null {
+  const now = new Date();
+
+  if (params.today) {
+    const start = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const end = new Date(start);
+    end.setDate(end.getDate() + 1);
+    return { timeMin: start.toISOString(), timeMax: end.toISOString() };
+  }
+
+  if (params.tomorrow) {
+    const start = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1);
+    const end = new Date(start);
+    end.setDate(end.getDate() + 1);
+    return { timeMin: start.toISOString(), timeMax: end.toISOString() };
+  }
+
+  if (typeof params.days === 'number') {
+    const start = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const end = new Date(start);
+    end.setDate(end.getDate() + (params.days as number));
+    return { timeMin: start.toISOString(), timeMax: end.toISOString() };
+  }
+
+  return null;
 }
+
+// ---------------------------------------------------------------------------
+// Registration
+// ---------------------------------------------------------------------------
 
 /**
  * Registers all Google Workspace MCP tools onto the given registry.
+ *
+ * When an authenticated `HttpClient` is provided, real service API instances
+ * are created and every handler delegates to the corresponding service method.
+ * Without an `HttpClient` every handler returns {@link STUB_RESPONSE}.
  *
  * Services covered:
  * - Gmail (search, read, send, labels)
@@ -42,7 +99,24 @@ function stubHandler(): (params: Record<string, unknown>) => Promise<unknown> {
  * - Groups (list)
  * - Workspace (search)
  */
-export function registerServiceTools(registry: ToolRegistry): void {
+export function registerServiceTools(registry: ToolRegistry, http?: HttpClient): void {
+  // Create API instances only when an authenticated http client is available
+  const gmailApi = http ? createGmailApi(http) : null;
+  const calendarApi = http ? createCalendarApi(http) : null;
+  const driveApi = http ? createDriveApi(http) : null;
+  const sheetsApi = http ? createSheetsApi(http) : null;
+  const tasksApi = http ? createTasksApi(http) : null;
+  const contactsApi = http ? createContactsApi(http) : null;
+  const docsApi = http ? createDocsApi(http) : null;
+  const slidesApi = http ? createSlidesApi(http) : null;
+  const classroomApi = http ? createClassroomApi(http) : null;
+  const formsApi = http ? createFormsApi(http) : null;
+  const chatApi = http ? createChatApi(http) : null;
+  const keepApi = http ? createKeepApi(http) : null;
+  const appscriptApi = http ? createAppScriptApi(http) : null;
+  const peopleApi = http ? createPeopleApi(http) : null;
+  const groupsApi = http ? createGroupsApi(http) : null;
+
   // ---------------------------------------------------------------------------
   // Gmail
   // ---------------------------------------------------------------------------
@@ -54,7 +128,15 @@ export function registerServiceTools(registry: ToolRegistry): void {
       query: { type: 'string', description: 'Gmail search query string', required: true },
       max: { type: 'number', description: 'Maximum number of results to return' },
     },
-    handler: stubHandler(),
+    handler: async (params) => {
+      if (!gmailApi) return STUB_RESPONSE;
+      const result = await gmailApi.searchMessages({
+        q: params.query as string,
+        maxResults: params.max as number | undefined,
+      });
+      if (!result.ok) return { error: result.error.message };
+      return result.value;
+    },
   });
 
   registry.register({
@@ -64,7 +146,16 @@ export function registerServiceTools(registry: ToolRegistry): void {
       threadId: { type: 'string', description: 'Gmail thread ID to read', required: true },
       includeBody: { type: 'boolean', description: 'Whether to include the full message body' },
     },
-    handler: stubHandler(),
+    handler: async (params) => {
+      if (!gmailApi) return STUB_RESPONSE;
+      const format = params.includeBody ? 'full' : 'metadata';
+      const result = await gmailApi.getThread({
+        id: params.threadId as string,
+        format,
+      });
+      if (!result.ok) return { error: result.error.message };
+      return result.value;
+    },
   });
 
   registry.register({
@@ -76,14 +167,33 @@ export function registerServiceTools(registry: ToolRegistry): void {
       body: { type: 'string', description: 'Email body content', required: true },
       html: { type: 'boolean', description: 'Whether the body is HTML' },
     },
-    handler: stubHandler(),
+    handler: async (params) => {
+      if (!gmailApi) return STUB_RESPONSE;
+      const options: Record<string, unknown> = {
+        to: params.to as string,
+        subject: params.subject as string,
+      };
+      if (params.html) {
+        options.html = params.body as string;
+      } else {
+        options.body = params.body as string;
+      }
+      const result = await gmailApi.sendMessage(options as Parameters<typeof gmailApi.sendMessage>[0]);
+      if (!result.ok) return { error: result.error.message };
+      return result.value;
+    },
   });
 
   registry.register({
     name: 'gmail_labels',
     description: 'List Gmail labels',
     parameters: {},
-    handler: stubHandler(),
+    handler: async () => {
+      if (!gmailApi) return STUB_RESPONSE;
+      const result = await gmailApi.listLabels();
+      if (!result.ok) return { error: result.error.message };
+      return result.value;
+    },
   });
 
   // ---------------------------------------------------------------------------
@@ -99,7 +209,18 @@ export function registerServiceTools(registry: ToolRegistry): void {
       tomorrow: { type: 'boolean', description: 'Only show events for tomorrow' },
       days: { type: 'number', description: 'Number of days ahead to list events for' },
     },
-    handler: stubHandler(),
+    handler: async (params) => {
+      if (!calendarApi) return STUB_RESPONSE;
+      const calendarId = (params.calendarId as string) || 'primary';
+      const bounds = computeTimeBounds(params);
+      const result = await calendarApi.listEvents(calendarId, {
+        ...(bounds ?? {}),
+        singleEvents: true,
+        orderBy: 'startTime',
+      });
+      if (!result.ok) return { error: result.error.message };
+      return result.value;
+    },
   });
 
   registry.register({
@@ -112,7 +233,21 @@ export function registerServiceTools(registry: ToolRegistry): void {
       attendees: { type: 'array', description: 'List of attendee email addresses' },
       location: { type: 'string', description: 'Event location' },
     },
-    handler: stubHandler(),
+    handler: async (params) => {
+      if (!calendarApi) return STUB_RESPONSE;
+      const attendees = params.attendees
+        ? (params.attendees as string[]).map((email) => ({ email }))
+        : undefined;
+      const result = await calendarApi.createEvent('primary', {
+        summary: params.summary as string,
+        start: { dateTime: params.start as string },
+        end: { dateTime: params.end as string },
+        attendees,
+        location: params.location as string | undefined,
+      });
+      if (!result.ok) return { error: result.error.message };
+      return result.value;
+    },
   });
 
   registry.register({
@@ -123,7 +258,17 @@ export function registerServiceTools(registry: ToolRegistry): void {
       from: { type: 'string', description: 'Start of time range (ISO 8601)', required: true },
       to: { type: 'string', description: 'End of time range (ISO 8601)', required: true },
     },
-    handler: stubHandler(),
+    handler: async (params) => {
+      if (!calendarApi) return STUB_RESPONSE;
+      const items = (params.calendars as string[]).map((id) => ({ id }));
+      const result = await calendarApi.queryFreeBusy({
+        timeMin: params.from as string,
+        timeMax: params.to as string,
+        items,
+      });
+      if (!result.ok) return { error: result.error.message };
+      return result.value;
+    },
   });
 
   // ---------------------------------------------------------------------------
@@ -137,7 +282,14 @@ export function registerServiceTools(registry: ToolRegistry): void {
       query: { type: 'string', description: 'Drive search query', required: true },
       max: { type: 'number', description: 'Maximum number of results to return' },
     },
-    handler: stubHandler(),
+    handler: async (params) => {
+      if (!driveApi) return STUB_RESPONSE;
+      const result = await driveApi.searchFiles(params.query as string, {
+        pageSize: params.max as number | undefined,
+      });
+      if (!result.ok) return { error: result.error.message };
+      return result.value;
+    },
   });
 
   registry.register({
@@ -146,7 +298,12 @@ export function registerServiceTools(registry: ToolRegistry): void {
     parameters: {
       fileId: { type: 'string', description: 'Drive file ID', required: true },
     },
-    handler: stubHandler(),
+    handler: async (params) => {
+      if (!driveApi) return STUB_RESPONSE;
+      const result = await driveApi.getFile(params.fileId as string);
+      if (!result.ok) return { error: result.error.message };
+      return result.value;
+    },
   });
 
   registry.register({
@@ -158,7 +315,18 @@ export function registerServiceTools(registry: ToolRegistry): void {
       mimeType: { type: 'string', description: 'MIME type of the file' },
       parent: { type: 'string', description: 'Parent folder ID in Drive' },
     },
-    handler: stubHandler(),
+    handler: async (params) => {
+      if (!driveApi) return STUB_RESPONSE;
+      const body = new TextEncoder().encode(params.content as string);
+      const result = await driveApi.uploadFile({
+        name: params.name as string,
+        mimeType: (params.mimeType as string) || 'text/plain',
+        body,
+        parents: params.parent ? [params.parent as string] : undefined,
+      });
+      if (!result.ok) return { error: result.error.message };
+      return result.value;
+    },
   });
 
   // ---------------------------------------------------------------------------
@@ -172,7 +340,15 @@ export function registerServiceTools(registry: ToolRegistry): void {
       spreadsheetId: { type: 'string', description: 'Google Sheets spreadsheet ID', required: true },
       range: { type: 'string', description: 'A1 notation range to read (e.g. Sheet1!A1:B10)', required: true },
     },
-    handler: stubHandler(),
+    handler: async (params) => {
+      if (!sheetsApi) return STUB_RESPONSE;
+      const result = await sheetsApi.getValues(
+        params.spreadsheetId as string,
+        params.range as string,
+      );
+      if (!result.ok) return { error: result.error.message };
+      return result.value;
+    },
   });
 
   registry.register({
@@ -183,7 +359,16 @@ export function registerServiceTools(registry: ToolRegistry): void {
       range: { type: 'string', description: 'A1 notation range to write (e.g. Sheet1!A1:B10)', required: true },
       values: { type: 'array', description: 'Two-dimensional array of cell values to write', required: true },
     },
-    handler: stubHandler(),
+    handler: async (params) => {
+      if (!sheetsApi) return STUB_RESPONSE;
+      const result = await sheetsApi.updateValues(
+        params.spreadsheetId as string,
+        params.range as string,
+        params.values as (string | number | boolean | null)[][],
+      );
+      if (!result.ok) return { error: result.error.message };
+      return result.value;
+    },
   });
 
   // ---------------------------------------------------------------------------
@@ -197,7 +382,14 @@ export function registerServiceTools(registry: ToolRegistry): void {
       tasklistId: { type: 'string', description: 'Task list ID', required: true },
       max: { type: 'number', description: 'Maximum number of tasks to return' },
     },
-    handler: stubHandler(),
+    handler: async (params) => {
+      if (!tasksApi) return STUB_RESPONSE;
+      const result = await tasksApi.listTasks(params.tasklistId as string, {
+        maxResults: params.max as number | undefined,
+      });
+      if (!result.ok) return { error: result.error.message };
+      return result.value;
+    },
   });
 
   registry.register({
@@ -209,7 +401,16 @@ export function registerServiceTools(registry: ToolRegistry): void {
       due: { type: 'string', description: 'Due date (ISO 8601)' },
       notes: { type: 'string', description: 'Task notes' },
     },
-    handler: stubHandler(),
+    handler: async (params) => {
+      if (!tasksApi) return STUB_RESPONSE;
+      const result = await tasksApi.createTask(params.tasklistId as string, {
+        title: params.title as string,
+        due: params.due as string | undefined,
+        notes: params.notes as string | undefined,
+      });
+      if (!result.ok) return { error: result.error.message };
+      return result.value;
+    },
   });
 
   registry.register({
@@ -219,7 +420,15 @@ export function registerServiceTools(registry: ToolRegistry): void {
       tasklistId: { type: 'string', description: 'Task list ID', required: true },
       taskId: { type: 'string', description: 'Task ID', required: true },
     },
-    handler: stubHandler(),
+    handler: async (params) => {
+      if (!tasksApi) return STUB_RESPONSE;
+      const result = await tasksApi.completeTask(
+        params.tasklistId as string,
+        params.taskId as string,
+      );
+      if (!result.ok) return { error: result.error.message };
+      return result.value;
+    },
   });
 
   // ---------------------------------------------------------------------------
@@ -233,7 +442,14 @@ export function registerServiceTools(registry: ToolRegistry): void {
       query: { type: 'string', description: 'Search query for contacts', required: true },
       max: { type: 'number', description: 'Maximum number of results to return' },
     },
-    handler: stubHandler(),
+    handler: async (params) => {
+      if (!contactsApi) return STUB_RESPONSE;
+      const result = await contactsApi.searchContacts(params.query as string, {
+        pageSize: params.max as number | undefined,
+      });
+      if (!result.ok) return { error: result.error.message };
+      return result.value;
+    },
   });
 
   // ---------------------------------------------------------------------------
@@ -246,7 +462,12 @@ export function registerServiceTools(registry: ToolRegistry): void {
     parameters: {
       documentId: { type: 'string', description: 'Google Doc document ID', required: true },
     },
-    handler: stubHandler(),
+    handler: async (params) => {
+      if (!docsApi) return STUB_RESPONSE;
+      const result = await docsApi.getDocument(params.documentId as string);
+      if (!result.ok) return { error: result.error.message };
+      return result.value;
+    },
   });
 
   registry.register({
@@ -255,7 +476,12 @@ export function registerServiceTools(registry: ToolRegistry): void {
     parameters: {
       title: { type: 'string', description: 'Document title', required: true },
     },
-    handler: stubHandler(),
+    handler: async (params) => {
+      if (!docsApi) return STUB_RESPONSE;
+      const result = await docsApi.createDocument(params.title as string);
+      if (!result.ok) return { error: result.error.message };
+      return result.value;
+    },
   });
 
   // ---------------------------------------------------------------------------
@@ -268,7 +494,12 @@ export function registerServiceTools(registry: ToolRegistry): void {
     parameters: {
       presentationId: { type: 'string', description: 'Google Slides presentation ID', required: true },
     },
-    handler: stubHandler(),
+    handler: async (params) => {
+      if (!slidesApi) return STUB_RESPONSE;
+      const result = await slidesApi.getPresentation(params.presentationId as string);
+      if (!result.ok) return { error: result.error.message };
+      return result.value;
+    },
   });
 
   registry.register({
@@ -277,7 +508,12 @@ export function registerServiceTools(registry: ToolRegistry): void {
     parameters: {
       title: { type: 'string', description: 'Presentation title', required: true },
     },
-    handler: stubHandler(),
+    handler: async (params) => {
+      if (!slidesApi) return STUB_RESPONSE;
+      const result = await slidesApi.createPresentation(params.title as string);
+      if (!result.ok) return { error: result.error.message };
+      return result.value;
+    },
   });
 
   // ---------------------------------------------------------------------------
@@ -290,7 +526,14 @@ export function registerServiceTools(registry: ToolRegistry): void {
     parameters: {
       max: { type: 'number', description: 'Maximum number of courses to return' },
     },
-    handler: stubHandler(),
+    handler: async (params) => {
+      if (!classroomApi) return STUB_RESPONSE;
+      const result = await classroomApi.listCourses({
+        pageSize: params.max as number | undefined,
+      });
+      if (!result.ok) return { error: result.error.message };
+      return result.value;
+    },
   });
 
   // ---------------------------------------------------------------------------
@@ -303,7 +546,12 @@ export function registerServiceTools(registry: ToolRegistry): void {
     parameters: {
       formId: { type: 'string', description: 'Google Form ID', required: true },
     },
-    handler: stubHandler(),
+    handler: async (params) => {
+      if (!formsApi) return STUB_RESPONSE;
+      const result = await formsApi.getForm(params.formId as string);
+      if (!result.ok) return { error: result.error.message };
+      return result.value;
+    },
   });
 
   // ---------------------------------------------------------------------------
@@ -317,7 +565,15 @@ export function registerServiceTools(registry: ToolRegistry): void {
       spaceName: { type: 'string', description: 'Chat space name', required: true },
       text: { type: 'string', description: 'Message text', required: true },
     },
-    handler: stubHandler(),
+    handler: async (params) => {
+      if (!chatApi) return STUB_RESPONSE;
+      const result = await chatApi.sendMessage(
+        params.spaceName as string,
+        params.text as string,
+      );
+      if (!result.ok) return { error: result.error.message };
+      return result.value;
+    },
   });
 
   // ---------------------------------------------------------------------------
@@ -330,7 +586,14 @@ export function registerServiceTools(registry: ToolRegistry): void {
     parameters: {
       max: { type: 'number', description: 'Maximum number of notes to return' },
     },
-    handler: stubHandler(),
+    handler: async (params) => {
+      if (!keepApi) return STUB_RESPONSE;
+      const result = await keepApi.listNotes({
+        pageSize: params.max as number | undefined,
+      });
+      if (!result.ok) return { error: result.error.message };
+      return result.value;
+    },
   });
 
   // ---------------------------------------------------------------------------
@@ -344,7 +607,15 @@ export function registerServiceTools(registry: ToolRegistry): void {
       scriptId: { type: 'string', description: 'Apps Script project ID', required: true },
       function: { type: 'string', description: 'Function name to execute', required: true },
     },
-    handler: stubHandler(),
+    handler: async (params) => {
+      if (!appscriptApi) return STUB_RESPONSE;
+      const result = await appscriptApi.runFunction(
+        params.scriptId as string,
+        params.function as string,
+      );
+      if (!result.ok) return { error: result.error.message };
+      return result.value;
+    },
   });
 
   // ---------------------------------------------------------------------------
@@ -355,7 +626,12 @@ export function registerServiceTools(registry: ToolRegistry): void {
     name: 'people_me',
     description: 'Get own profile',
     parameters: {},
-    handler: stubHandler(),
+    handler: async () => {
+      if (!peopleApi) return STUB_RESPONSE;
+      const result = await peopleApi.getProfile('people/me');
+      if (!result.ok) return { error: result.error.message };
+      return result.value;
+    },
   });
 
   // ---------------------------------------------------------------------------
@@ -368,7 +644,14 @@ export function registerServiceTools(registry: ToolRegistry): void {
     parameters: {
       max: { type: 'number', description: 'Maximum number of groups to return' },
     },
-    handler: stubHandler(),
+    handler: async (params) => {
+      if (!groupsApi) return STUB_RESPONSE;
+      const result = await groupsApi.listGroups('customers/my_customer', {
+        pageSize: params.max as number | undefined,
+      });
+      if (!result.ok) return { error: result.error.message };
+      return result.value;
+    },
   });
 
   // ---------------------------------------------------------------------------
@@ -383,6 +666,43 @@ export function registerServiceTools(registry: ToolRegistry): void {
       services: { type: 'array', description: 'List of services to search (gmail, drive, calendar)' },
       max: { type: 'number', description: 'Maximum number of results per service' },
     },
-    handler: stubHandler(),
+    handler: async (params) => {
+      if (!gmailApi && !driveApi && !calendarApi) return STUB_RESPONSE;
+
+      const query = params.query as string;
+      const services = (params.services as string[] | undefined) ?? ['gmail', 'drive', 'calendar'];
+      const max = params.max as number | undefined;
+      const results: Record<string, unknown> = {};
+
+      const searches = services.map(async (service) => {
+        try {
+          switch (service) {
+            case 'gmail': {
+              if (!gmailApi) break;
+              const r = await gmailApi.searchMessages({ q: query, maxResults: max });
+              results.gmail = r.ok ? r.value : { error: r.error.message };
+              break;
+            }
+            case 'drive': {
+              if (!driveApi) break;
+              const r = await driveApi.searchFiles(query, { pageSize: max });
+              results.drive = r.ok ? r.value : { error: r.error.message };
+              break;
+            }
+            case 'calendar': {
+              if (!calendarApi) break;
+              const r = await calendarApi.searchEvents('primary', query, { maxResults: max });
+              results.calendar = r.ok ? r.value : { error: r.error.message };
+              break;
+            }
+          }
+        } catch (error) {
+          results[service] = { error: error instanceof Error ? error.message : String(error) };
+        }
+      });
+
+      await Promise.all(searches);
+      return results;
+    },
   });
 }

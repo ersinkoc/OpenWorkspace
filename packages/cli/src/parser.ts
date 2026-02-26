@@ -190,6 +190,8 @@ function setFlagValue(
 /**
  * Gets a string flag value.
  */
+export function getStringFlag(flags: ParsedArgs['flags'], key: string, defaultValue: string): string;
+export function getStringFlag(flags: ParsedArgs['flags'], key: string): string | undefined;
 export function getStringFlag(flags: ParsedArgs['flags'], key: string, defaultValue?: string): string | undefined {
   const value = flags[key];
   if (typeof value === 'string') {

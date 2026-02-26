@@ -7,10 +7,12 @@ import { createCommandRegistry } from './commands.js';
 import type { Command } from './commands.js';
 import { parseArgs, getBooleanFlag, getStringFlag } from './parser.js';
 import type { ParsedArgs } from './parser.js';
+import { formatOutput, detectFormat } from './formatter.js';
 import { createToolRegistry } from '@openworkspace/mcp';
 import { parseYaml, executePipeline, createBuiltinActions } from '@openworkspace/pipeline';
 import {
   createAuthEngine,
+  createHttpClient,
   loadCredentialsFile,
   createTokenStore,
   createConfigStore,
@@ -21,16 +23,96 @@ import {
   createServiceAccountAuth,
   createMemoryTokenStore,
 } from '@openworkspace/core';
+import type { HttpClient } from '@openworkspace/core';
 import * as fs from 'fs/promises';
 import * as path from 'path';
 
-// Note: Service packages are available but require authenticated HttpClient
-// import { createGmailApi } from '@openworkspace/gmail';
-// import { calendar } from '@openworkspace/calendar';
-// import { createDriveApi } from '@openworkspace/drive';
-// import { createSheetsApi } from '@openworkspace/sheets';
+// Service packages
+import { createGmailApi } from '@openworkspace/gmail';
+import { calendar as createCalendarApi } from '@openworkspace/calendar';
+import { createDriveApi } from '@openworkspace/drive';
+import { createSheetsApi } from '@openworkspace/sheets';
+import { createDocsApi } from '@openworkspace/docs';
+import { slides as createSlidesApi } from '@openworkspace/slides';
+import { contacts as createContactsApi } from '@openworkspace/contacts';
+import { tasks as createTasksApi } from '@openworkspace/tasks';
+import { chat as createChatApi } from '@openworkspace/chat';
+import { classroom as createClassroomApi } from '@openworkspace/classroom';
+import { createFormsApi } from '@openworkspace/forms';
+import { appscript as createAppScriptApi } from '@openworkspace/appscript';
+import { people as createPeopleApi } from '@openworkspace/people';
+import { groups as createGroupsApi } from '@openworkspace/groups';
+import { keep as createKeepApi } from '@openworkspace/keep';
 
 const VERSION = '0.1.0';
+
+/**
+ * Gets an authenticated HttpClient for API calls.
+ *
+ * Loads credentials, creates a token store, retrieves a valid access token
+ * (auto-refreshing if expired), and returns an HttpClient with a request
+ * interceptor that adds the Authorization header.
+ *
+ * @param account - Optional account email. If omitted, uses the first available account.
+ * @returns An object with `http` (the authenticated HttpClient) and `account` (the resolved email),
+ *          or an error message string on failure.
+ */
+async function getAuthenticatedClient(
+  account?: string,
+): Promise<{ ok: true; value: { http: HttpClient; account: string } } | { ok: false; error: string }> {
+  // Load credentials
+  const configDir = getDefaultConfigDir();
+  const credsPath = path.join(configDir, 'credentials.json');
+  const creds = await loadCredentialsFile(credsPath);
+  if (!creds.ok) {
+    return { ok: false, error: 'No credentials found. Run `ows auth credentials <path>` first.' };
+  }
+
+  const store = createTokenStore(
+    'file',
+    process.env['OWS_KEYRING_PASSWORD'] ?? 'openworkspace-default-key',
+  );
+
+  const auth = createAuthEngine({
+    credentials: creds.value,
+    scopes: [],
+    tokenStore: store,
+  });
+
+  // Resolve the account
+  let resolvedAccount = account;
+  if (!resolvedAccount) {
+    const accounts = await auth.listAccounts();
+    if (!accounts.ok) {
+      return { ok: false, error: accounts.error.message };
+    }
+    if (accounts.value.length === 0) {
+      return { ok: false, error: 'No authorized accounts. Run `ows auth add <email>` to add one.' };
+    }
+    resolvedAccount = accounts.value[0] as string;
+  }
+
+  // Get a valid token (auto-refreshes if expired)
+  const token = await auth.getToken(resolvedAccount);
+  if (!token.ok) {
+    return { ok: false, error: token.error.message };
+  }
+
+  // Create an HttpClient with an auth interceptor
+  const http = createHttpClient();
+  http.interceptors.request.push((url, config) => ({
+    url,
+    config: {
+      ...config,
+      headers: {
+        ...config.headers,
+        Authorization: `Bearer ${token.value}`,
+      },
+    },
+  }));
+
+  return { ok: true, value: { http, account: resolvedAccount } };
+}
 
 /**
  * Generic subcommand dispatcher used by commands with subcommands.
@@ -57,7 +139,7 @@ function createSubcommandDispatcher(
 async function main(): Promise<number> {
   const args = process.argv.slice(2);
   const parsed = parseArgs(args, {
-    boolean: ['help', 'version', 'verbose', 'json', 'plain', 'headless', 'device', 'check', 'html', 'today', 'week'],
+    boolean: ['help', 'version', 'verbose', 'json', 'plain', 'headless', 'device', 'check', 'html', 'today', 'week', 'csv'],
     alias: { h: 'help', v: 'version', o: 'output' },
   });
 
@@ -529,7 +611,7 @@ async function main(): Promise<number> {
     {
       name: 'search',
       description: 'Search Gmail messages',
-      usage: 'ows gmail search <query> [--max N]',
+      usage: 'ows gmail search <query> [--max N] [--account <email>] [--json|--plain|--csv]',
       async handler(args) {
         const query = args._[0];
         if (!query) {
@@ -537,15 +619,23 @@ async function main(): Promise<number> {
           console.log('Usage: ows gmail search <query> [--max N]');
           return 1;
         }
-        const _max = getStringFlag(args.flags, 'max', '20');
-        console.log('Not yet connected. Run `ows auth add <email>` to authenticate first.');
+        const max = getStringFlag(args.flags, 'max', '20');
+
+        const client = await getAuthenticatedClient(getStringFlag(args.flags, 'account'));
+        if (!client.ok) { console.error(`Error: ${client.error}`); return 1; }
+
+        const gmail = createGmailApi(client.value.http);
+        const result = await gmail.searchMessages({ q: query, maxResults: parseInt(max) });
+        if (!result.ok) { console.error(`Error: ${result.error.message}`); return 1; }
+
+        console.log(formatOutput(result.value.messages ?? [], detectFormat(args.flags)));
         return 0;
       },
     },
     {
       name: 'read',
       description: 'Read a Gmail thread',
-      usage: 'ows gmail read <threadId>',
+      usage: 'ows gmail read <threadId> [--account <email>] [--json|--plain|--csv]',
       async handler(args) {
         const threadId = args._[0];
         if (!threadId) {
@@ -553,14 +643,22 @@ async function main(): Promise<number> {
           console.log('Usage: ows gmail read <threadId>');
           return 1;
         }
-        console.log('Not yet connected. Run `ows auth add <email>` to authenticate first.');
+
+        const client = await getAuthenticatedClient(getStringFlag(args.flags, 'account'));
+        if (!client.ok) { console.error(`Error: ${client.error}`); return 1; }
+
+        const gmail = createGmailApi(client.value.http);
+        const result = await gmail.getThread({ id: threadId });
+        if (!result.ok) { console.error(`Error: ${result.error.message}`); return 1; }
+
+        console.log(formatOutput(result.value, detectFormat(args.flags)));
         return 0;
       },
     },
     {
       name: 'send',
       description: 'Send an email',
-      usage: 'ows gmail send --to <email> --subject <subject> --body <body> [--html]',
+      usage: 'ows gmail send --to <email> --subject <subject> --body <body> [--html] [--account <email>]',
       async handler(args) {
         const to = getStringFlag(args.flags, 'to');
         const subject = getStringFlag(args.flags, 'subject');
@@ -570,26 +668,53 @@ async function main(): Promise<number> {
           console.log('Usage: ows gmail send --to <email> --subject <subject> --body <body> [--html]');
           return 1;
         }
-        const _html = getBooleanFlag(args.flags, 'html');
-        console.log('Not yet connected. Run `ows auth add <email>` to authenticate first.');
+        const isHtml = getBooleanFlag(args.flags, 'html');
+
+        const client = await getAuthenticatedClient(getStringFlag(args.flags, 'account'));
+        if (!client.ok) { console.error(`Error: ${client.error}`); return 1; }
+
+        const gmail = createGmailApi(client.value.http);
+        const result = await gmail.sendMessage({
+          to,
+          subject,
+          body: isHtml ? undefined : body,
+          html: isHtml ? body : undefined,
+        });
+        if (!result.ok) { console.error(`Error: ${result.error.message}`); return 1; }
+
+        console.log(formatOutput(result.value, detectFormat(args.flags)));
         return 0;
       },
     },
     {
       name: 'labels',
       description: 'List Gmail labels',
-      usage: 'ows gmail labels',
-      async handler() {
-        console.log('Not yet connected. Run `ows auth add <email>` to authenticate first.');
+      usage: 'ows gmail labels [--account <email>] [--json|--plain|--csv]',
+      async handler(args) {
+        const client = await getAuthenticatedClient(getStringFlag(args.flags, 'account'));
+        if (!client.ok) { console.error(`Error: ${client.error}`); return 1; }
+
+        const gmail = createGmailApi(client.value.http);
+        const result = await gmail.listLabels();
+        if (!result.ok) { console.error(`Error: ${result.error.message}`); return 1; }
+
+        console.log(formatOutput(result.value, detectFormat(args.flags)));
         return 0;
       },
     },
     {
       name: 'drafts',
       description: 'List Gmail drafts',
-      usage: 'ows gmail drafts',
-      async handler() {
-        console.log('Not yet connected. Run `ows auth add <email>` to authenticate first.');
+      usage: 'ows gmail drafts [--account <email>] [--json|--plain|--csv]',
+      async handler(args) {
+        const client = await getAuthenticatedClient(getStringFlag(args.flags, 'account'));
+        if (!client.ok) { console.error(`Error: ${client.error}`); return 1; }
+
+        const gmail = createGmailApi(client.value.http);
+        const result = await gmail.listDrafts();
+        if (!result.ok) { console.error(`Error: ${result.error.message}`); return 1; }
+
+        console.log(formatOutput(result.value.drafts ?? [], detectFormat(args.flags)));
         return 0;
       },
     },
@@ -607,19 +732,49 @@ async function main(): Promise<number> {
     {
       name: 'events',
       description: 'List calendar events',
-      usage: 'ows calendar events [calendarId] [--today] [--week]',
+      usage: 'ows calendar events [calendarId] [--today] [--week] [--account <email>] [--json|--plain|--csv]',
       async handler(args) {
-        const _calendarId = args._[0] ?? 'primary';
-        const _today = getBooleanFlag(args.flags, 'today');
-        const _week = getBooleanFlag(args.flags, 'week');
-        console.log('Not yet connected. Run `ows auth add <email>` to authenticate first.');
+        const calendarId = args._[0] ?? 'primary';
+        const today = getBooleanFlag(args.flags, 'today');
+        const week = getBooleanFlag(args.flags, 'week');
+
+        const client = await getAuthenticatedClient(getStringFlag(args.flags, 'account'));
+        if (!client.ok) { console.error(`Error: ${client.error}`); return 1; }
+
+        const cal = createCalendarApi(client.value.http);
+
+        const now = new Date();
+        let timeMin: string | undefined;
+        let timeMax: string | undefined;
+
+        if (today) {
+          const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+          const endOfDay = new Date(startOfDay.getTime() + 24 * 60 * 60 * 1000);
+          timeMin = startOfDay.toISOString();
+          timeMax = endOfDay.toISOString();
+        } else if (week) {
+          const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+          const endOfWeek = new Date(startOfDay.getTime() + 7 * 24 * 60 * 60 * 1000);
+          timeMin = startOfDay.toISOString();
+          timeMax = endOfWeek.toISOString();
+        }
+
+        const result = await cal.listEvents(calendarId, {
+          timeMin,
+          timeMax,
+          singleEvents: true,
+          orderBy: 'startTime',
+        });
+        if (!result.ok) { console.error(`Error: ${result.error.message}`); return 1; }
+
+        console.log(formatOutput(result.value.items ?? [], detectFormat(args.flags)));
         return 0;
       },
     },
     {
       name: 'create',
       description: 'Create a calendar event',
-      usage: 'ows calendar create <calendarId> --summary <text> --start <datetime> --end <datetime>',
+      usage: 'ows calendar create <calendarId> --summary <text> --start <datetime> --end <datetime> [--account <email>]',
       async handler(args) {
         const calendarId = args._[0];
         const summary = getStringFlag(args.flags, 'summary');
@@ -630,14 +785,26 @@ async function main(): Promise<number> {
           console.log('Usage: ows calendar create <calendarId> --summary <text> --start <datetime> --end <datetime>');
           return 1;
         }
-        console.log('Not yet connected. Run `ows auth add <email>` to authenticate first.');
+
+        const client = await getAuthenticatedClient(getStringFlag(args.flags, 'account'));
+        if (!client.ok) { console.error(`Error: ${client.error}`); return 1; }
+
+        const cal = createCalendarApi(client.value.http);
+        const result = await cal.createEvent(calendarId, {
+          summary,
+          start: { dateTime: start },
+          end: { dateTime: end },
+        });
+        if (!result.ok) { console.error(`Error: ${result.error.message}`); return 1; }
+
+        console.log(formatOutput(result.value, detectFormat(args.flags)));
         return 0;
       },
     },
     {
       name: 'freebusy',
       description: 'Query free/busy information',
-      usage: 'ows calendar freebusy --calendars <list> [--today]',
+      usage: 'ows calendar freebusy --calendars <list> [--today] [--account <email>] [--json|--plain|--csv]',
       async handler(args) {
         const calendars = getStringFlag(args.flags, 'calendars');
         if (!calendars) {
@@ -645,8 +812,36 @@ async function main(): Promise<number> {
           console.log('Usage: ows calendar freebusy --calendars <list> [--today]');
           return 1;
         }
-        const _today = getBooleanFlag(args.flags, 'today');
-        console.log('Not yet connected. Run `ows auth add <email>` to authenticate first.');
+        const today = getBooleanFlag(args.flags, 'today');
+
+        const client = await getAuthenticatedClient(getStringFlag(args.flags, 'account'));
+        if (!client.ok) { console.error(`Error: ${client.error}`); return 1; }
+
+        const cal = createCalendarApi(client.value.http);
+        const calendarIds = calendars.split(',').map(c => c.trim());
+
+        const now = new Date();
+        let timeMin: string;
+        let timeMax: string;
+
+        if (today) {
+          const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+          const endOfDay = new Date(startOfDay.getTime() + 24 * 60 * 60 * 1000);
+          timeMin = startOfDay.toISOString();
+          timeMax = endOfDay.toISOString();
+        } else {
+          timeMin = now.toISOString();
+          timeMax = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000).toISOString();
+        }
+
+        const result = await cal.queryFreeBusy({
+          timeMin,
+          timeMax,
+          items: calendarIds.map(id => ({ id })),
+        });
+        if (!result.ok) { console.error(`Error: ${result.error.message}`); return 1; }
+
+        console.log(formatOutput(result.value, detectFormat(args.flags)));
         return 0;
       },
     },
@@ -664,17 +859,25 @@ async function main(): Promise<number> {
     {
       name: 'ls',
       description: 'List files in Google Drive',
-      usage: 'ows drive ls [--max N]',
+      usage: 'ows drive ls [--max N] [--account <email>] [--json|--plain|--csv]',
       async handler(args) {
-        const _max = getStringFlag(args.flags, 'max', '20');
-        console.log('Not yet connected. Run `ows auth add <email>` to authenticate first.');
+        const max = getStringFlag(args.flags, 'max', '20');
+
+        const client = await getAuthenticatedClient(getStringFlag(args.flags, 'account'));
+        if (!client.ok) { console.error(`Error: ${client.error}`); return 1; }
+
+        const drv = createDriveApi(client.value.http);
+        const result = await drv.listFiles({ pageSize: parseInt(max) });
+        if (!result.ok) { console.error(`Error: ${result.error.message}`); return 1; }
+
+        console.log(formatOutput(result.value.files ?? [], detectFormat(args.flags)));
         return 0;
       },
     },
     {
       name: 'search',
       description: 'Search files in Google Drive',
-      usage: 'ows drive search <query> [--max N]',
+      usage: 'ows drive search <query> [--max N] [--account <email>] [--json|--plain|--csv]',
       async handler(args) {
         const query = args._[0];
         if (!query) {
@@ -682,31 +885,56 @@ async function main(): Promise<number> {
           console.log('Usage: ows drive search <query> [--max N]');
           return 1;
         }
-        const _max = getStringFlag(args.flags, 'max', '20');
-        console.log('Not yet connected. Run `ows auth add <email>` to authenticate first.');
+        const max = getStringFlag(args.flags, 'max', '20');
+
+        const client = await getAuthenticatedClient(getStringFlag(args.flags, 'account'));
+        if (!client.ok) { console.error(`Error: ${client.error}`); return 1; }
+
+        const drv = createDriveApi(client.value.http);
+        const result = await drv.searchFiles(query, { pageSize: parseInt(max) });
+        if (!result.ok) { console.error(`Error: ${result.error.message}`); return 1; }
+
+        console.log(formatOutput(result.value.files ?? [], detectFormat(args.flags)));
         return 0;
       },
     },
     {
       name: 'upload',
       description: 'Upload a file to Google Drive',
-      usage: 'ows drive upload <path> [--folder <name>]',
+      usage: 'ows drive upload <path> [--folder <folderId>] [--account <email>] [--json|--plain|--csv]',
       async handler(args) {
         const filePath = args._[0];
         if (!filePath) {
           console.error('Error: File path is required');
-          console.log('Usage: ows drive upload <path> [--folder <name>]');
+          console.log('Usage: ows drive upload <path> [--folder <folderId>]');
           return 1;
         }
-        const _folder = getStringFlag(args.flags, 'folder');
-        console.log('Not yet connected. Run `ows auth add <email>` to authenticate first.');
+        const folder = getStringFlag(args.flags, 'folder');
+
+        const client = await getAuthenticatedClient(getStringFlag(args.flags, 'account'));
+        if (!client.ok) { console.error(`Error: ${client.error}`); return 1; }
+
+        const resolved = path.resolve(filePath);
+        const fileContent = await fs.readFile(resolved);
+        const fileName = path.basename(resolved);
+
+        const drv = createDriveApi(client.value.http);
+        const result = await drv.uploadFile({
+          name: fileName,
+          mimeType: 'application/octet-stream',
+          body: new Uint8Array(fileContent),
+          parents: folder ? [folder] : undefined,
+        });
+        if (!result.ok) { console.error(`Error: ${result.error.message}`); return 1; }
+
+        console.log(formatOutput(result.value, detectFormat(args.flags)));
         return 0;
       },
     },
     {
       name: 'download',
       description: 'Download a file from Google Drive',
-      usage: 'ows drive download <fileId> [-o <path>]',
+      usage: 'ows drive download <fileId> [-o <path>] [--account <email>]',
       async handler(args) {
         const fileId = args._[0];
         if (!fileId) {
@@ -714,8 +942,21 @@ async function main(): Promise<number> {
           console.log('Usage: ows drive download <fileId> [-o <path>]');
           return 1;
         }
-        const _output = getStringFlag(args.flags, 'output');
-        console.log('Not yet connected. Run `ows auth add <email>` to authenticate first.');
+        const output = getStringFlag(args.flags, 'output');
+
+        const client = await getAuthenticatedClient(getStringFlag(args.flags, 'account'));
+        if (!client.ok) { console.error(`Error: ${client.error}`); return 1; }
+
+        const drv = createDriveApi(client.value.http);
+        const result = await drv.downloadFile(fileId);
+        if (!result.ok) { console.error(`Error: ${result.error.message}`); return 1; }
+
+        if (output) {
+          await fs.writeFile(path.resolve(output), result.value, 'utf-8');
+          console.log(`File saved to: ${path.resolve(output)}`);
+        } else {
+          console.log(result.value);
+        }
         return 0;
       },
     },
@@ -733,7 +974,7 @@ async function main(): Promise<number> {
     {
       name: 'get',
       description: 'Read values from a spreadsheet',
-      usage: 'ows sheets get <spreadsheetId> <range>',
+      usage: 'ows sheets get <spreadsheetId> <range> [--account <email>] [--json|--plain|--csv]',
       async handler(args) {
         const spreadsheetId = args._[0];
         const range = args._[1];
@@ -742,31 +983,55 @@ async function main(): Promise<number> {
           console.log('Usage: ows sheets get <spreadsheetId> <range>');
           return 1;
         }
-        console.log('Not yet connected. Run `ows auth add <email>` to authenticate first.');
+
+        const client = await getAuthenticatedClient(getStringFlag(args.flags, 'account'));
+        if (!client.ok) { console.error(`Error: ${client.error}`); return 1; }
+
+        const sh = createSheetsApi(client.value.http);
+        const result = await sh.getValues(spreadsheetId, range);
+        if (!result.ok) { console.error(`Error: ${result.error.message}`); return 1; }
+
+        console.log(formatOutput(result.value.values ?? [], detectFormat(args.flags)));
         return 0;
       },
     },
     {
       name: 'update',
       description: 'Write values to a spreadsheet',
-      usage: 'ows sheets update <spreadsheetId> <range> <values>',
+      usage: 'ows sheets update <spreadsheetId> <range> <values> [--account <email>] [--json|--plain|--csv]',
       async handler(args) {
         const spreadsheetId = args._[0];
         const range = args._[1];
-        const values = args._[2];
-        if (!spreadsheetId || !range || !values) {
+        const valuesStr = args._[2];
+        if (!spreadsheetId || !range || !valuesStr) {
           console.error('Error: spreadsheetId, range, and values are required');
           console.log('Usage: ows sheets update <spreadsheetId> <range> <values>');
           return 1;
         }
-        console.log('Not yet connected. Run `ows auth add <email>` to authenticate first.');
+
+        let values: (string | number | boolean | null)[][];
+        try {
+          values = JSON.parse(valuesStr) as (string | number | boolean | null)[][];
+        } catch {
+          console.error('Error: values must be valid JSON (2D array)');
+          return 1;
+        }
+
+        const client = await getAuthenticatedClient(getStringFlag(args.flags, 'account'));
+        if (!client.ok) { console.error(`Error: ${client.error}`); return 1; }
+
+        const sh = createSheetsApi(client.value.http);
+        const result = await sh.updateValues(spreadsheetId, range, values);
+        if (!result.ok) { console.error(`Error: ${result.error.message}`); return 1; }
+
+        console.log(formatOutput(result.value, detectFormat(args.flags)));
         return 0;
       },
     },
     {
       name: 'create',
       description: 'Create a new spreadsheet',
-      usage: 'ows sheets create <title> [--sheets <names>]',
+      usage: 'ows sheets create <title> [--sheets <names>] [--account <email>] [--json|--plain|--csv]',
       async handler(args) {
         const title = args._[0];
         if (!title) {
@@ -774,8 +1039,20 @@ async function main(): Promise<number> {
           console.log('Usage: ows sheets create <title> [--sheets <names>]');
           return 1;
         }
-        const _sheets = getStringFlag(args.flags, 'sheets');
-        console.log('Not yet connected. Run `ows auth add <email>` to authenticate first.');
+        const sheetsStr = getStringFlag(args.flags, 'sheets');
+        const sheetNames = sheetsStr ? sheetsStr.split(',').map(s => s.trim()) : undefined;
+
+        const client = await getAuthenticatedClient(getStringFlag(args.flags, 'account'));
+        if (!client.ok) { console.error(`Error: ${client.error}`); return 1; }
+
+        const sh = createSheetsApi(client.value.http);
+        const result = await sh.createSpreadsheet({
+          title,
+          sheetTitles: sheetNames,
+        });
+        if (!result.ok) { console.error(`Error: ${result.error.message}`); return 1; }
+
+        console.log(formatOutput(result.value, detectFormat(args.flags)));
         return 0;
       },
     },
@@ -793,7 +1070,7 @@ async function main(): Promise<number> {
     {
       name: 'get',
       description: 'Get a Google Doc',
-      usage: 'ows docs get <documentId>',
+      usage: 'ows docs get <documentId> [--account <email>] [--json|--plain|--csv]',
       async handler(args) {
         const documentId = args._[0];
         if (!documentId) {
@@ -801,14 +1078,22 @@ async function main(): Promise<number> {
           console.log('Usage: ows docs get <documentId>');
           return 1;
         }
-        console.log('Not yet connected. Run `ows auth add <email>` to authenticate first.');
+
+        const client = await getAuthenticatedClient(getStringFlag(args.flags, 'account'));
+        if (!client.ok) { console.error(`Error: ${client.error}`); return 1; }
+
+        const docsApi = createDocsApi(client.value.http);
+        const result = await docsApi.getDocument(documentId);
+        if (!result.ok) { console.error(`Error: ${result.error.message}`); return 1; }
+
+        console.log(formatOutput(result.value, detectFormat(args.flags)));
         return 0;
       },
     },
     {
       name: 'create',
       description: 'Create a Google Doc',
-      usage: 'ows docs create <title>',
+      usage: 'ows docs create <title> [--account <email>] [--json|--plain|--csv]',
       async handler(args) {
         const title = args._[0];
         if (!title) {
@@ -816,14 +1101,22 @@ async function main(): Promise<number> {
           console.log('Usage: ows docs create <title>');
           return 1;
         }
-        console.log('Not yet connected. Run `ows auth add <email>` to authenticate first.');
+
+        const client = await getAuthenticatedClient(getStringFlag(args.flags, 'account'));
+        if (!client.ok) { console.error(`Error: ${client.error}`); return 1; }
+
+        const docsApi = createDocsApi(client.value.http);
+        const result = await docsApi.createDocument(title);
+        if (!result.ok) { console.error(`Error: ${result.error.message}`); return 1; }
+
+        console.log(formatOutput(result.value, detectFormat(args.flags)));
         return 0;
       },
     },
     {
       name: 'export',
       description: 'Export a Google Doc',
-      usage: 'ows docs export <documentId> --format pdf|docx|txt',
+      usage: 'ows docs export <documentId> --format pdf|docx|txt [-o <path>] [--account <email>]',
       async handler(args) {
         const documentId = args._[0];
         const format = getStringFlag(args.flags, 'format');
@@ -832,7 +1125,32 @@ async function main(): Promise<number> {
           console.log('Usage: ows docs export <documentId> --format pdf|docx|txt');
           return 1;
         }
-        console.log('Not yet connected. Run `ows auth add <email>` to authenticate first.');
+
+        const mimeMap: Record<string, string> = {
+          pdf: 'application/pdf',
+          docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+          txt: 'text/plain',
+        };
+        const mimeType = mimeMap[format.toLowerCase()];
+        if (!mimeType) {
+          console.error(`Error: Unsupported format "${format}". Use pdf, docx, or txt.`);
+          return 1;
+        }
+
+        const client = await getAuthenticatedClient(getStringFlag(args.flags, 'account'));
+        if (!client.ok) { console.error(`Error: ${client.error}`); return 1; }
+
+        const docsApi = createDocsApi(client.value.http);
+        const result = await docsApi.exportDocument(documentId, mimeType as 'application/pdf');
+        if (!result.ok) { console.error(`Error: ${result.error.message}`); return 1; }
+
+        const output = getStringFlag(args.flags, 'output');
+        if (output) {
+          await fs.writeFile(path.resolve(output), result.value, 'utf-8');
+          console.log(`Document exported to: ${path.resolve(output)}`);
+        } else {
+          console.log(result.value);
+        }
         return 0;
       },
     },
@@ -850,7 +1168,7 @@ async function main(): Promise<number> {
     {
       name: 'get',
       description: 'Get a Google Slides presentation',
-      usage: 'ows slides get <presentationId>',
+      usage: 'ows slides get <presentationId> [--account <email>] [--json|--plain|--csv]',
       async handler(args) {
         const presentationId = args._[0];
         if (!presentationId) {
@@ -858,14 +1176,22 @@ async function main(): Promise<number> {
           console.log('Usage: ows slides get <presentationId>');
           return 1;
         }
-        console.log('Not yet connected. Run `ows auth add <email>` to authenticate first.');
+
+        const client = await getAuthenticatedClient(getStringFlag(args.flags, 'account'));
+        if (!client.ok) { console.error(`Error: ${client.error}`); return 1; }
+
+        const slidesApi = createSlidesApi(client.value.http);
+        const result = await slidesApi.getPresentation(presentationId);
+        if (!result.ok) { console.error(`Error: ${result.error.message}`); return 1; }
+
+        console.log(formatOutput(result.value, detectFormat(args.flags)));
         return 0;
       },
     },
     {
       name: 'create',
       description: 'Create a Google Slides presentation',
-      usage: 'ows slides create <title>',
+      usage: 'ows slides create <title> [--account <email>] [--json|--plain|--csv]',
       async handler(args) {
         const title = args._[0];
         if (!title) {
@@ -873,14 +1199,22 @@ async function main(): Promise<number> {
           console.log('Usage: ows slides create <title>');
           return 1;
         }
-        console.log('Not yet connected. Run `ows auth add <email>` to authenticate first.');
+
+        const client = await getAuthenticatedClient(getStringFlag(args.flags, 'account'));
+        if (!client.ok) { console.error(`Error: ${client.error}`); return 1; }
+
+        const slidesApi = createSlidesApi(client.value.http);
+        const result = await slidesApi.createPresentation(title);
+        if (!result.ok) { console.error(`Error: ${result.error.message}`); return 1; }
+
+        console.log(formatOutput(result.value, detectFormat(args.flags)));
         return 0;
       },
     },
     {
       name: 'export',
       description: 'Export a Google Slides presentation',
-      usage: 'ows slides export <presentationId> --format pdf|pptx',
+      usage: 'ows slides export <presentationId> --format pdf|pptx [-o <path>] [--account <email>]',
       async handler(args) {
         const presentationId = args._[0];
         const format = getStringFlag(args.flags, 'format');
@@ -889,7 +1223,35 @@ async function main(): Promise<number> {
           console.log('Usage: ows slides export <presentationId> --format pdf|pptx');
           return 1;
         }
-        console.log('Not yet connected. Run `ows auth add <email>` to authenticate first.');
+
+        const mimeMap: Record<string, string> = {
+          pdf: 'application/pdf',
+          pptx: 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+        };
+        const mimeType = mimeMap[format.toLowerCase()];
+        if (!mimeType) {
+          console.error(`Error: Unsupported format "${format}". Use pdf or pptx.`);
+          return 1;
+        }
+
+        const client = await getAuthenticatedClient(getStringFlag(args.flags, 'account'));
+        if (!client.ok) { console.error(`Error: ${client.error}`); return 1; }
+
+        const slidesApi = createSlidesApi(client.value.http);
+        const result = await slidesApi.exportPresentation(
+          presentationId,
+          mimeType as 'application/pdf',
+        );
+        if (!result.ok) { console.error(`Error: ${result.error.message}`); return 1; }
+
+        const output = getStringFlag(args.flags, 'output');
+        if (output) {
+          const buffer = await result.value.arrayBuffer();
+          await fs.writeFile(path.resolve(output), Buffer.from(buffer));
+          console.log(`Presentation exported to: ${path.resolve(output)}`);
+        } else {
+          console.log(`Export complete. Blob size: ${result.value.size} bytes`);
+        }
         return 0;
       },
     },
@@ -907,17 +1269,28 @@ async function main(): Promise<number> {
     {
       name: 'list',
       description: 'List contacts',
-      usage: 'ows contacts list [--max N]',
+      usage: 'ows contacts list [--max N] [--account <email>] [--json|--plain|--csv]',
       async handler(args) {
-        const _max = getStringFlag(args.flags, 'max', '20');
-        console.log('Not yet connected. Run `ows auth add <email>` to authenticate first.');
+        const max = getStringFlag(args.flags, 'max', '20');
+
+        const client = await getAuthenticatedClient(getStringFlag(args.flags, 'account'));
+        if (!client.ok) { console.error(`Error: ${client.error}`); return 1; }
+
+        const api = createContactsApi(client.value.http);
+        const result = await api.listContacts({
+          pageSize: parseInt(max),
+          personFields: 'names,emailAddresses,phoneNumbers',
+        });
+        if (!result.ok) { console.error(`Error: ${result.error.message}`); return 1; }
+
+        console.log(formatOutput(result.value.connections ?? [], detectFormat(args.flags)));
         return 0;
       },
     },
     {
       name: 'search',
       description: 'Search contacts',
-      usage: 'ows contacts search <query> [--max N]',
+      usage: 'ows contacts search <query> [--max N] [--account <email>] [--json|--plain|--csv]',
       async handler(args) {
         const query = args._[0];
         if (!query) {
@@ -925,15 +1298,23 @@ async function main(): Promise<number> {
           console.log('Usage: ows contacts search <query> [--max N]');
           return 1;
         }
-        const _max = getStringFlag(args.flags, 'max', '20');
-        console.log('Not yet connected. Run `ows auth add <email>` to authenticate first.');
+        const max = getStringFlag(args.flags, 'max', '20');
+
+        const client = await getAuthenticatedClient(getStringFlag(args.flags, 'account'));
+        if (!client.ok) { console.error(`Error: ${client.error}`); return 1; }
+
+        const api = createContactsApi(client.value.http);
+        const result = await api.searchContacts(query, { pageSize: parseInt(max) });
+        if (!result.ok) { console.error(`Error: ${result.error.message}`); return 1; }
+
+        console.log(formatOutput(result.value, detectFormat(args.flags)));
         return 0;
       },
     },
     {
       name: 'create',
       description: 'Create a contact',
-      usage: 'ows contacts create --name <name> --email <email>',
+      usage: 'ows contacts create --name <name> --email <email> [--account <email>] [--json|--plain|--csv]',
       async handler(args) {
         const name = getStringFlag(args.flags, 'name');
         const email = getStringFlag(args.flags, 'email');
@@ -942,7 +1323,18 @@ async function main(): Promise<number> {
           console.log('Usage: ows contacts create --name <name> --email <email>');
           return 1;
         }
-        console.log('Not yet connected. Run `ows auth add <email>` to authenticate first.');
+
+        const client = await getAuthenticatedClient(getStringFlag(args.flags, 'account'));
+        if (!client.ok) { console.error(`Error: ${client.error}`); return 1; }
+
+        const api = createContactsApi(client.value.http);
+        const result = await api.createContact({
+          names: [{ givenName: name }],
+          emailAddresses: [{ value: email }],
+        });
+        if (!result.ok) { console.error(`Error: ${result.error.message}`); return 1; }
+
+        console.log(formatOutput(result.value, detectFormat(args.flags)));
         return 0;
       },
     },
@@ -960,16 +1352,23 @@ async function main(): Promise<number> {
     {
       name: 'lists',
       description: 'List task lists',
-      usage: 'ows tasks lists',
-      async handler() {
-        console.log('Not yet connected. Run `ows auth add <email>` to authenticate first.');
+      usage: 'ows tasks lists [--account <email>] [--json|--plain|--csv]',
+      async handler(args) {
+        const client = await getAuthenticatedClient(getStringFlag(args.flags, 'account'));
+        if (!client.ok) { console.error(`Error: ${client.error}`); return 1; }
+
+        const api = createTasksApi(client.value.http);
+        const result = await api.listTaskLists();
+        if (!result.ok) { console.error(`Error: ${result.error.message}`); return 1; }
+
+        console.log(formatOutput(result.value.items ?? [], detectFormat(args.flags)));
         return 0;
       },
     },
     {
       name: 'list',
       description: 'List tasks in a task list',
-      usage: 'ows tasks list <tasklistId> [--max N]',
+      usage: 'ows tasks list <tasklistId> [--max N] [--account <email>] [--json|--plain|--csv]',
       async handler(args) {
         const tasklistId = args._[0];
         if (!tasklistId) {
@@ -977,15 +1376,23 @@ async function main(): Promise<number> {
           console.log('Usage: ows tasks list <tasklistId> [--max N]');
           return 1;
         }
-        const _max = getStringFlag(args.flags, 'max', '20');
-        console.log('Not yet connected. Run `ows auth add <email>` to authenticate first.');
+        const max = getStringFlag(args.flags, 'max', '20');
+
+        const client = await getAuthenticatedClient(getStringFlag(args.flags, 'account'));
+        if (!client.ok) { console.error(`Error: ${client.error}`); return 1; }
+
+        const api = createTasksApi(client.value.http);
+        const result = await api.listTasks(tasklistId, { maxResults: parseInt(max) });
+        if (!result.ok) { console.error(`Error: ${result.error.message}`); return 1; }
+
+        console.log(formatOutput(result.value.items ?? [], detectFormat(args.flags)));
         return 0;
       },
     },
     {
       name: 'create',
       description: 'Create a task',
-      usage: 'ows tasks create <tasklistId> --title <title>',
+      usage: 'ows tasks create <tasklistId> --title <title> [--account <email>] [--json|--plain|--csv]',
       async handler(args) {
         const tasklistId = args._[0];
         const title = getStringFlag(args.flags, 'title');
@@ -994,14 +1401,22 @@ async function main(): Promise<number> {
           console.log('Usage: ows tasks create <tasklistId> --title <title>');
           return 1;
         }
-        console.log('Not yet connected. Run `ows auth add <email>` to authenticate first.');
+
+        const client = await getAuthenticatedClient(getStringFlag(args.flags, 'account'));
+        if (!client.ok) { console.error(`Error: ${client.error}`); return 1; }
+
+        const api = createTasksApi(client.value.http);
+        const result = await api.createTask(tasklistId, { title });
+        if (!result.ok) { console.error(`Error: ${result.error.message}`); return 1; }
+
+        console.log(formatOutput(result.value, detectFormat(args.flags)));
         return 0;
       },
     },
     {
       name: 'complete',
       description: 'Complete a task',
-      usage: 'ows tasks complete <tasklistId> <taskId>',
+      usage: 'ows tasks complete <tasklistId> <taskId> [--account <email>] [--json|--plain|--csv]',
       async handler(args) {
         const tasklistId = args._[0];
         const taskId = args._[1];
@@ -1010,7 +1425,15 @@ async function main(): Promise<number> {
           console.log('Usage: ows tasks complete <tasklistId> <taskId>');
           return 1;
         }
-        console.log('Not yet connected. Run `ows auth add <email>` to authenticate first.');
+
+        const client = await getAuthenticatedClient(getStringFlag(args.flags, 'account'));
+        if (!client.ok) { console.error(`Error: ${client.error}`); return 1; }
+
+        const api = createTasksApi(client.value.http);
+        const result = await api.completeTask(tasklistId, taskId);
+        if (!result.ok) { console.error(`Error: ${result.error.message}`); return 1; }
+
+        console.log(formatOutput(result.value, detectFormat(args.flags)));
         return 0;
       },
     },
@@ -1028,16 +1451,23 @@ async function main(): Promise<number> {
     {
       name: 'spaces',
       description: 'List chat spaces',
-      usage: 'ows chat spaces',
-      async handler() {
-        console.log('Not yet connected. Run `ows auth add <email>` to authenticate first.');
+      usage: 'ows chat spaces [--account <email>] [--json|--plain|--csv]',
+      async handler(args) {
+        const client = await getAuthenticatedClient(getStringFlag(args.flags, 'account'));
+        if (!client.ok) { console.error(`Error: ${client.error}`); return 1; }
+
+        const api = createChatApi(client.value.http);
+        const result = await api.listSpaces();
+        if (!result.ok) { console.error(`Error: ${result.error.message}`); return 1; }
+
+        console.log(formatOutput(result.value.spaces ?? [], detectFormat(args.flags)));
         return 0;
       },
     },
     {
       name: 'messages',
       description: 'List messages in a space',
-      usage: 'ows chat messages <spaceName> [--max N]',
+      usage: 'ows chat messages <spaceName> [--max N] [--account <email>] [--json|--plain|--csv]',
       async handler(args) {
         const spaceName = args._[0];
         if (!spaceName) {
@@ -1045,15 +1475,23 @@ async function main(): Promise<number> {
           console.log('Usage: ows chat messages <spaceName> [--max N]');
           return 1;
         }
-        const _max = getStringFlag(args.flags, 'max', '20');
-        console.log('Not yet connected. Run `ows auth add <email>` to authenticate first.');
+        const max = getStringFlag(args.flags, 'max', '20');
+
+        const client = await getAuthenticatedClient(getStringFlag(args.flags, 'account'));
+        if (!client.ok) { console.error(`Error: ${client.error}`); return 1; }
+
+        const api = createChatApi(client.value.http);
+        const result = await api.listMessages(spaceName, { pageSize: parseInt(max) });
+        if (!result.ok) { console.error(`Error: ${result.error.message}`); return 1; }
+
+        console.log(formatOutput(result.value.messages ?? [], detectFormat(args.flags)));
         return 0;
       },
     },
     {
       name: 'send',
       description: 'Send a chat message',
-      usage: 'ows chat send <spaceName> --text <text>',
+      usage: 'ows chat send <spaceName> --text <text> [--account <email>] [--json|--plain|--csv]',
       async handler(args) {
         const spaceName = args._[0];
         const text = getStringFlag(args.flags, 'text');
@@ -1062,7 +1500,15 @@ async function main(): Promise<number> {
           console.log('Usage: ows chat send <spaceName> --text <text>');
           return 1;
         }
-        console.log('Not yet connected. Run `ows auth add <email>` to authenticate first.');
+
+        const client = await getAuthenticatedClient(getStringFlag(args.flags, 'account'));
+        if (!client.ok) { console.error(`Error: ${client.error}`); return 1; }
+
+        const api = createChatApi(client.value.http);
+        const result = await api.sendMessage(spaceName, text);
+        if (!result.ok) { console.error(`Error: ${result.error.message}`); return 1; }
+
+        console.log(formatOutput(result.value, detectFormat(args.flags)));
         return 0;
       },
     },
@@ -1080,17 +1526,25 @@ async function main(): Promise<number> {
     {
       name: 'courses',
       description: 'List courses',
-      usage: 'ows classroom courses [--max N]',
+      usage: 'ows classroom courses [--max N] [--account <email>] [--json|--plain|--csv]',
       async handler(args) {
-        const _max = getStringFlag(args.flags, 'max', '20');
-        console.log('Not yet connected. Run `ows auth add <email>` to authenticate first.');
+        const max = getStringFlag(args.flags, 'max', '20');
+
+        const client = await getAuthenticatedClient(getStringFlag(args.flags, 'account'));
+        if (!client.ok) { console.error(`Error: ${client.error}`); return 1; }
+
+        const api = createClassroomApi(client.value.http);
+        const result = await api.listCourses({ pageSize: parseInt(max) });
+        if (!result.ok) { console.error(`Error: ${result.error.message}`); return 1; }
+
+        console.log(formatOutput(result.value.courses ?? [], detectFormat(args.flags)));
         return 0;
       },
     },
     {
       name: 'students',
       description: 'List students in a course',
-      usage: 'ows classroom students <courseId>',
+      usage: 'ows classroom students <courseId> [--account <email>] [--json|--plain|--csv]',
       async handler(args) {
         const courseId = args._[0];
         if (!courseId) {
@@ -1098,14 +1552,22 @@ async function main(): Promise<number> {
           console.log('Usage: ows classroom students <courseId>');
           return 1;
         }
-        console.log('Not yet connected. Run `ows auth add <email>` to authenticate first.');
+
+        const client = await getAuthenticatedClient(getStringFlag(args.flags, 'account'));
+        if (!client.ok) { console.error(`Error: ${client.error}`); return 1; }
+
+        const api = createClassroomApi(client.value.http);
+        const result = await api.listStudents(courseId);
+        if (!result.ok) { console.error(`Error: ${result.error.message}`); return 1; }
+
+        console.log(formatOutput(result.value.students ?? [], detectFormat(args.flags)));
         return 0;
       },
     },
     {
       name: 'coursework',
       description: 'List coursework in a course',
-      usage: 'ows classroom coursework <courseId>',
+      usage: 'ows classroom coursework <courseId> [--account <email>] [--json|--plain|--csv]',
       async handler(args) {
         const courseId = args._[0];
         if (!courseId) {
@@ -1113,7 +1575,15 @@ async function main(): Promise<number> {
           console.log('Usage: ows classroom coursework <courseId>');
           return 1;
         }
-        console.log('Not yet connected. Run `ows auth add <email>` to authenticate first.');
+
+        const client = await getAuthenticatedClient(getStringFlag(args.flags, 'account'));
+        if (!client.ok) { console.error(`Error: ${client.error}`); return 1; }
+
+        const api = createClassroomApi(client.value.http);
+        const result = await api.listCourseWork(courseId);
+        if (!result.ok) { console.error(`Error: ${result.error.message}`); return 1; }
+
+        console.log(formatOutput(result.value.courseWork ?? [], detectFormat(args.flags)));
         return 0;
       },
     },
@@ -1131,7 +1601,7 @@ async function main(): Promise<number> {
     {
       name: 'get',
       description: 'Get a Google Form',
-      usage: 'ows forms get <formId>',
+      usage: 'ows forms get <formId> [--account <email>] [--json|--plain|--csv]',
       async handler(args) {
         const formId = args._[0];
         if (!formId) {
@@ -1139,14 +1609,22 @@ async function main(): Promise<number> {
           console.log('Usage: ows forms get <formId>');
           return 1;
         }
-        console.log('Not yet connected. Run `ows auth add <email>` to authenticate first.');
+
+        const client = await getAuthenticatedClient(getStringFlag(args.flags, 'account'));
+        if (!client.ok) { console.error(`Error: ${client.error}`); return 1; }
+
+        const api = createFormsApi(client.value.http);
+        const result = await api.getForm(formId);
+        if (!result.ok) { console.error(`Error: ${result.error.message}`); return 1; }
+
+        console.log(formatOutput(result.value, detectFormat(args.flags)));
         return 0;
       },
     },
     {
       name: 'responses',
       description: 'List form responses',
-      usage: 'ows forms responses <formId> [--max N]',
+      usage: 'ows forms responses <formId> [--max N] [--account <email>] [--json|--plain|--csv]',
       async handler(args) {
         const formId = args._[0];
         if (!formId) {
@@ -1154,8 +1632,16 @@ async function main(): Promise<number> {
           console.log('Usage: ows forms responses <formId> [--max N]');
           return 1;
         }
-        const _max = getStringFlag(args.flags, 'max', '20');
-        console.log('Not yet connected. Run `ows auth add <email>` to authenticate first.');
+        const max = getStringFlag(args.flags, 'max', '20');
+
+        const client = await getAuthenticatedClient(getStringFlag(args.flags, 'account'));
+        if (!client.ok) { console.error(`Error: ${client.error}`); return 1; }
+
+        const api = createFormsApi(client.value.http);
+        const result = await api.listResponses(formId, { pageSize: parseInt(max) });
+        if (!result.ok) { console.error(`Error: ${result.error.message}`); return 1; }
+
+        console.log(formatOutput(result.value.responses ?? [], detectFormat(args.flags)));
         return 0;
       },
     },
@@ -1173,7 +1659,7 @@ async function main(): Promise<number> {
     {
       name: 'get',
       description: 'Get an Apps Script project',
-      usage: 'ows appscript get <scriptId>',
+      usage: 'ows appscript get <scriptId> [--account <email>] [--json|--plain|--csv]',
       async handler(args) {
         const scriptId = args._[0];
         if (!scriptId) {
@@ -1181,14 +1667,22 @@ async function main(): Promise<number> {
           console.log('Usage: ows appscript get <scriptId>');
           return 1;
         }
-        console.log('Not yet connected. Run `ows auth add <email>` to authenticate first.');
+
+        const client = await getAuthenticatedClient(getStringFlag(args.flags, 'account'));
+        if (!client.ok) { console.error(`Error: ${client.error}`); return 1; }
+
+        const api = createAppScriptApi(client.value.http);
+        const result = await api.getProject(scriptId);
+        if (!result.ok) { console.error(`Error: ${result.error.message}`); return 1; }
+
+        console.log(formatOutput(result.value, detectFormat(args.flags)));
         return 0;
       },
     },
     {
       name: 'run',
       description: 'Run an Apps Script function',
-      usage: 'ows appscript run <scriptId> --function <name>',
+      usage: 'ows appscript run <scriptId> --function <name> [--account <email>] [--json|--plain|--csv]',
       async handler(args) {
         const scriptId = args._[0];
         const fn = getStringFlag(args.flags, 'function');
@@ -1197,7 +1691,15 @@ async function main(): Promise<number> {
           console.log('Usage: ows appscript run <scriptId> --function <name>');
           return 1;
         }
-        console.log('Not yet connected. Run `ows auth add <email>` to authenticate first.');
+
+        const client = await getAuthenticatedClient(getStringFlag(args.flags, 'account'));
+        if (!client.ok) { console.error(`Error: ${client.error}`); return 1; }
+
+        const api = createAppScriptApi(client.value.http);
+        const result = await api.runFunction(scriptId, fn);
+        if (!result.ok) { console.error(`Error: ${result.error.message}`); return 1; }
+
+        console.log(formatOutput(result.value, detectFormat(args.flags)));
         return 0;
       },
     },
@@ -1215,16 +1717,23 @@ async function main(): Promise<number> {
     {
       name: 'me',
       description: 'Get own profile',
-      usage: 'ows people me',
-      async handler() {
-        console.log('Not yet connected. Run `ows auth add <email>` to authenticate first.');
+      usage: 'ows people me [--account <email>] [--json|--plain|--csv]',
+      async handler(args) {
+        const client = await getAuthenticatedClient(getStringFlag(args.flags, 'account'));
+        if (!client.ok) { console.error(`Error: ${client.error}`); return 1; }
+
+        const api = createPeopleApi(client.value.http);
+        const result = await api.getProfile('people/me');
+        if (!result.ok) { console.error(`Error: ${result.error.message}`); return 1; }
+
+        console.log(formatOutput(result.value, detectFormat(args.flags)));
         return 0;
       },
     },
     {
       name: 'search',
       description: 'Search profiles',
-      usage: 'ows people search <query>',
+      usage: 'ows people search <query> [--account <email>] [--json|--plain|--csv]',
       async handler(args) {
         const query = args._[0];
         if (!query) {
@@ -1232,7 +1741,15 @@ async function main(): Promise<number> {
           console.log('Usage: ows people search <query>');
           return 1;
         }
-        console.log('Not yet connected. Run `ows auth add <email>` to authenticate first.');
+
+        const client = await getAuthenticatedClient(getStringFlag(args.flags, 'account'));
+        if (!client.ok) { console.error(`Error: ${client.error}`); return 1; }
+
+        const api = createPeopleApi(client.value.http);
+        const result = await api.searchProfiles(query);
+        if (!result.ok) { console.error(`Error: ${result.error.message}`); return 1; }
+
+        console.log(formatOutput(result.value.people ?? [], detectFormat(args.flags)));
         return 0;
       },
     },
@@ -1250,17 +1767,26 @@ async function main(): Promise<number> {
     {
       name: 'list',
       description: 'List groups',
-      usage: 'ows groups list [--max N]',
+      usage: 'ows groups list [--max N] [--parent <customerId>] [--account <email>] [--json|--plain|--csv]',
       async handler(args) {
-        const _max = getStringFlag(args.flags, 'max', '20');
-        console.log('Not yet connected. Run `ows auth add <email>` to authenticate first.');
+        const max = getStringFlag(args.flags, 'max', '20');
+        const parent = getStringFlag(args.flags, 'parent', 'customers/my_customer');
+
+        const client = await getAuthenticatedClient(getStringFlag(args.flags, 'account'));
+        if (!client.ok) { console.error(`Error: ${client.error}`); return 1; }
+
+        const api = createGroupsApi(client.value.http);
+        const result = await api.listGroups(parent, { pageSize: parseInt(max) });
+        if (!result.ok) { console.error(`Error: ${result.error.message}`); return 1; }
+
+        console.log(formatOutput(result.value.groups ?? [], detectFormat(args.flags)));
         return 0;
       },
     },
     {
       name: 'members',
       description: 'List group members',
-      usage: 'ows groups members <groupName>',
+      usage: 'ows groups members <groupName> [--account <email>] [--json|--plain|--csv]',
       async handler(args) {
         const groupName = args._[0];
         if (!groupName) {
@@ -1268,7 +1794,15 @@ async function main(): Promise<number> {
           console.log('Usage: ows groups members <groupName>');
           return 1;
         }
-        console.log('Not yet connected. Run `ows auth add <email>` to authenticate first.');
+
+        const client = await getAuthenticatedClient(getStringFlag(args.flags, 'account'));
+        if (!client.ok) { console.error(`Error: ${client.error}`); return 1; }
+
+        const api = createGroupsApi(client.value.http);
+        const result = await api.listMembers(groupName);
+        if (!result.ok) { console.error(`Error: ${result.error.message}`); return 1; }
+
+        console.log(formatOutput(result.value.memberships ?? [], detectFormat(args.flags)));
         return 0;
       },
     },
@@ -1286,17 +1820,25 @@ async function main(): Promise<number> {
     {
       name: 'list',
       description: 'List Keep notes',
-      usage: 'ows keep list [--max N]',
+      usage: 'ows keep list [--max N] [--account <email>] [--json|--plain|--csv]',
       async handler(args) {
-        const _max = getStringFlag(args.flags, 'max', '20');
-        console.log('Not yet connected. Run `ows auth add <email>` to authenticate first.');
+        const max = getStringFlag(args.flags, 'max', '20');
+
+        const client = await getAuthenticatedClient(getStringFlag(args.flags, 'account'));
+        if (!client.ok) { console.error(`Error: ${client.error}`); return 1; }
+
+        const api = createKeepApi(client.value.http);
+        const result = await api.listNotes({ pageSize: parseInt(max) });
+        if (!result.ok) { console.error(`Error: ${result.error.message}`); return 1; }
+
+        console.log(formatOutput(result.value.notes ?? [], detectFormat(args.flags)));
         return 0;
       },
     },
     {
       name: 'get',
       description: 'Get a Keep note',
-      usage: 'ows keep get <noteName>',
+      usage: 'ows keep get <noteName> [--account <email>] [--json|--plain|--csv]',
       async handler(args) {
         const noteName = args._[0];
         if (!noteName) {
@@ -1304,7 +1846,15 @@ async function main(): Promise<number> {
           console.log('Usage: ows keep get <noteName>');
           return 1;
         }
-        console.log('Not yet connected. Run `ows auth add <email>` to authenticate first.');
+
+        const client = await getAuthenticatedClient(getStringFlag(args.flags, 'account'));
+        if (!client.ok) { console.error(`Error: ${client.error}`); return 1; }
+
+        const api = createKeepApi(client.value.http);
+        const result = await api.getNote(noteName);
+        if (!result.ok) { console.error(`Error: ${result.error.message}`); return 1; }
+
+        console.log(formatOutput(result.value, detectFormat(args.flags)));
         return 0;
       },
     },

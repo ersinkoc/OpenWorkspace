@@ -32,6 +32,8 @@ type TokenType =
   | 'dot'
   | 'lparen'
   | 'rparen'
+  | 'lbracket'
+  | 'rbracket'
   | 'comma'
   | 'plus'
   | 'minus'
@@ -141,6 +143,8 @@ function tokenize(input: string): Token[] {
     if (ch === '%') { tokens.push({ type: 'percent', value: '%', pos: i }); i++; continue; }
     if (ch === '(') { tokens.push({ type: 'lparen', value: '(', pos: i }); i++; continue; }
     if (ch === ')') { tokens.push({ type: 'rparen', value: ')', pos: i }); i++; continue; }
+    if (ch === '[') { tokens.push({ type: 'lbracket', value: '[', pos: i }); i++; continue; }
+    if (ch === ']') { tokens.push({ type: 'rbracket', value: ']', pos: i }); i++; continue; }
     if (ch === ',') { tokens.push({ type: 'comma', value: ',', pos: i }); i++; continue; }
     if (ch === '.') { tokens.push({ type: 'dot', value: '.', pos: i }); i++; continue; }
     if (ch === '?') { tokens.push({ type: 'question', value: '?', pos: i }); i++; continue; }
@@ -441,7 +445,7 @@ class Parser {
   }
 
   /**
-   * postfix = primary ('.' identifier | '(' args ')')*
+   * postfix = primary ('.' identifier | '[' expression ']')*
    */
   private parsePostfix(): unknown {
     let value = this.parsePrimary();
@@ -454,6 +458,16 @@ class Parser {
 
         if (value !== null && value !== undefined && typeof value === 'object') {
           value = (value as Record<string, unknown>)[propName];
+        } else {
+          value = undefined;
+        }
+      } else if (this.peek().type === 'lbracket') {
+        this.advance(); // consume '['
+        const index = this.parseTernary();
+        this.expect('rbracket');
+
+        if (value !== null && value !== undefined && typeof value === 'object') {
+          value = (value as Record<string | number, unknown>)[index as string | number];
         } else {
           value = undefined;
         }

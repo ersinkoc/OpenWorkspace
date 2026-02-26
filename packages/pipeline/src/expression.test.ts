@@ -489,4 +489,40 @@ describe('evaluateExpression', () => {
       expect(evaluateExpression('(true || false) && true', ctx)).toBe(true);
     });
   });
+
+  describe('array indexing', () => {
+    const emptyContext = makeContext();
+
+    it('accesses array element by numeric index', () => {
+      const ctx = { ...emptyContext, inputs: { items: ['a', 'b', 'c'] } };
+      expect(evaluateExpression('inputs.items[0]', ctx)).toBe('a');
+      expect(evaluateExpression('inputs.items[2]', ctx)).toBe('c');
+    });
+
+    it('accesses object property by string key', () => {
+      const ctx = { ...emptyContext, inputs: { data: { name: 'test', count: 42 } } };
+      expect(evaluateExpression("inputs.data['name']", ctx)).toBe('test');
+    });
+
+    it('accesses with computed index from variable', () => {
+      const ctx = { ...emptyContext, inputs: { items: ['x', 'y', 'z'] }, vars: { idx: 1 } };
+      expect(evaluateExpression('inputs.items[vars.idx]', ctx)).toBe('y');
+    });
+
+    it('chains array and property access', () => {
+      const ctx = { ...emptyContext, inputs: { users: [{ name: 'Alice' }, { name: 'Bob' }] } };
+      expect(evaluateExpression('inputs.users[0].name', ctx)).toBe('Alice');
+      expect(evaluateExpression('inputs.users[1].name', ctx)).toBe('Bob');
+    });
+
+    it('returns undefined for out-of-bounds index', () => {
+      const ctx = { ...emptyContext, inputs: { items: ['a'] } };
+      expect(evaluateExpression('inputs.items[5]', ctx)).toBeUndefined();
+    });
+
+    it('supports negative-like expression in index', () => {
+      const ctx = { ...emptyContext, inputs: { items: ['a', 'b', 'c'] } };
+      expect(evaluateExpression('inputs.items[2 - 1]', ctx)).toBe('b');
+    });
+  });
 });

@@ -31,7 +31,22 @@
     "clean": "rm -rf dist"
   },
   "dependencies": {
-    "@openworkspace/core": "workspace:*"
+    "@openworkspace/core": "workspace:*",
+    "@openworkspace/gmail": "workspace:*",
+    "@openworkspace/calendar": "workspace:*",
+    "@openworkspace/drive": "workspace:*",
+    "@openworkspace/sheets": "workspace:*",
+    "@openworkspace/tasks": "workspace:*",
+    "@openworkspace/contacts": "workspace:*",
+    "@openworkspace/docs": "workspace:*",
+    "@openworkspace/slides": "workspace:*",
+    "@openworkspace/classroom": "workspace:*",
+    "@openworkspace/forms": "workspace:*",
+    "@openworkspace/chat": "workspace:*",
+    "@openworkspace/keep": "workspace:*",
+    "@openworkspace/appscript": "workspace:*",
+    "@openworkspace/people": "workspace:*",
+    "@openworkspace/groups": "workspace:*"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",

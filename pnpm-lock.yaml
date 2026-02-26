@@ -105,15 +105,60 @@ importers:
 
   packages/cli:
     dependencies:
+      '@openworkspace/appscript':
+        specifier: workspace:*
+        version: link:../appscript
+      '@openworkspace/calendar':
+        specifier: workspace:*
+        version: link:../calendar
+      '@openworkspace/chat':
+        specifier: workspace:*
+        version: link:../chat
+      '@openworkspace/classroom':
+        specifier: workspace:*
+        version: link:../classroom
+      '@openworkspace/contacts':
+        specifier: workspace:*
+        version: link:../contacts
       '@openworkspace/core':
         specifier: workspace:*
         version: link:../core
+      '@openworkspace/docs':
+        specifier: workspace:*
+        version: link:../docs
+      '@openworkspace/drive':
+        specifier: workspace:*
+        version: link:../drive
+      '@openworkspace/forms':
+        specifier: workspace:*
+        version: link:../forms
+      '@openworkspace/gmail':
+        specifier: workspace:*
+        version: link:../gmail
+      '@openworkspace/groups':
+        specifier: workspace:*
+        version: link:../groups
+      '@openworkspace/keep':
+        specifier: workspace:*
+        version: link:../keep
       '@openworkspace/mcp':
         specifier: workspace:*
         version: link:../mcp
+      '@openworkspace/people':
+        specifier: workspace:*
+        version: link:../people
       '@openworkspace/pipeline':
         specifier: workspace:*
         version: link:../pipeline
+      '@openworkspace/sheets':
+        specifier: workspace:*
+        version: link:../sheets
+      '@openworkspace/slides':
+        specifier: workspace:*
+        version: link:../slides
+      '@openworkspace/tasks':
+        specifier: workspace:*
+        version: link:../tasks
     devDependencies:
       '@types/node':
         specifier: ^22.0.0
@@ -278,9 +323,54 @@ importers:
 
   packages/mcp:
     dependencies:
+      '@openworkspace/appscript':
+        specifier: workspace:*
+        version: link:../appscript
+      '@openworkspace/calendar':
+        specifier: workspace:*
+        version: link:../calendar
+      '@openworkspace/chat':
+        specifier: workspace:*
+        version: link:../chat
+      '@openworkspace/classroom':
+        specifier: workspace:*
+        version: link:../classroom
+      '@openworkspace/contacts':
+        specifier: workspace:*
+        version: link:../contacts
       '@openworkspace/core':
         specifier: workspace:*
         version: link:../core
+      '@openworkspace/docs':
+        specifier: workspace:*
+        version: link:../docs
+      '@openworkspace/drive':
+        specifier: workspace:*
+        version: link:../drive
+      '@openworkspace/forms':
+        specifier: workspace:*
+        version: link:../forms
+      '@openworkspace/gmail':
+        specifier: workspace:*
+        version: link:../gmail
+      '@openworkspace/groups':
+        specifier: workspace:*
+        version: link:../groups
+      '@openworkspace/keep':
+        specifier: workspace:*
+        version: link:../keep
+      '@openworkspace/people':
+        specifier: workspace:*
+        version: link:../people
+      '@openworkspace/sheets':
+        specifier: workspace:*
+        version: link:../sheets
+      '@openworkspace/slides':
+        specifier: workspace:*
+        version: link:../slides
+      '@openworkspace/tasks':
+        specifier: workspace:*
+        version: link:../tasks
     devDependencies:
       '@types/node':
         specifier: ^22.0.0

@@ -4,7 +4,17 @@
  * Resources are URI-addressable data that AI agents can read.
  * This module provides a resource registry with support for both
  * static resources (fixed URIs) and resource templates (parameterized URIs).
+ *
+ * When an authenticated {@link HttpClient} is provided the handlers call real
+ * Google Workspace APIs; otherwise they return placeholder JSON so the MCP
+ * server can still advertise its resource catalogue while unauthenticated.
  */
+
+import type { HttpClient } from '@openworkspace/core';
+import { calendar as createCalendarApi } from '@openworkspace/calendar';
+import type { CalendarApi } from '@openworkspace/calendar';
+import { createDriveApi } from '@openworkspace/drive';
+import type { DriveApi } from '@openworkspace/drive';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -165,12 +175,19 @@ export function createResourceRegistry(): ResourceRegistry {
  * Registers calendar-related resources.
  *
  * Static resources:
- * - `calendar://primary/events` — today's events from the primary calendar
+ * - `calendar://primary/events` -- today's events from the primary calendar
  *
  * Template resources:
- * - `calendar://{calendarId}/events` — events for a specific calendar
+ * - `calendar://{calendarId}/events` -- events for a specific calendar
+ *
+ * @param registry - The resource registry to register on.
+ * @param http - Optional authenticated HttpClient. When provided, real
+ *               Calendar API calls are made; otherwise placeholder JSON is
+ *               returned.
  */
-export function registerCalendarResources(registry: ResourceRegistry): void {
+export function registerCalendarResources(registry: ResourceRegistry, http?: HttpClient): void {
+  const calendarApi: CalendarApi | null = http ? createCalendarApi(http) : null;
+
   // Static: primary calendar events
   registry.registerResource(
     {
@@ -180,13 +197,31 @@ export function registerCalendarResources(registry: ResourceRegistry): void {
       mimeType: 'application/json',
     },
     async (uri: string, _params: Record<string, string>): Promise<ResourceContent> => {
-      // TODO: Replace with actual Google Calendar API call
-      // e.g. calendar.events.list({ calendarId: 'primary', timeMin, timeMax })
+      if (calendarApi) {
+        const now = new Date();
+        const timeMin = new Date(now.getFullYear(), now.getMonth(), now.getDate()).toISOString();
+        const timeMax = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1).toISOString();
+        const result = await calendarApi.listEvents('primary', {
+          timeMin,
+          timeMax,
+          singleEvents: true,
+          orderBy: 'startTime',
+        });
+        if (result.ok) {
+          return { uri, mimeType: 'application/json', text: JSON.stringify(result.value, null, 2) };
+        }
+        return {
+          uri,
+          mimeType: 'application/json',
+          text: JSON.stringify({ error: result.error.message }, null, 2),
+        };
+      }
+
       const placeholder = {
         calendarId: 'primary',
         date: new Date().toISOString().slice(0, 10),
         events: [],
-        _note: 'Placeholder — wire up Google Calendar API here',
+        _note: 'Placeholder -- wire up Google Calendar API by providing an HttpClient',
       };
 
       return {
@@ -206,13 +241,33 @@ export function registerCalendarResources(registry: ResourceRegistry): void {
       mimeType: 'application/json',
     },
     async (uri: string, params: Record<string, string>): Promise<ResourceContent> => {
-      // TODO: Replace with actual Google Calendar API call
-      // e.g. calendar.events.list({ calendarId: params.calendarId, timeMin, timeMax })
+      const calendarId = params['calendarId'] as string;
+
+      if (calendarApi) {
+        const now = new Date();
+        const timeMin = new Date(now.getFullYear(), now.getMonth(), now.getDate()).toISOString();
+        const timeMax = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1).toISOString();
+        const result = await calendarApi.listEvents(calendarId, {
+          timeMin,
+          timeMax,
+          singleEvents: true,
+          orderBy: 'startTime',
+        });
+        if (result.ok) {
+          return { uri, mimeType: 'application/json', text: JSON.stringify(result.value, null, 2) };
+        }
+        return {
+          uri,
+          mimeType: 'application/json',
+          text: JSON.stringify({ error: result.error.message }, null, 2),
+        };
+      }
+
       const placeholder = {
-        calendarId: params['calendarId'],
+        calendarId,
         date: new Date().toISOString().slice(0, 10),
         events: [],
-        _note: 'Placeholder — wire up Google Calendar API here',
+        _note: 'Placeholder -- wire up Google Calendar API by providing an HttpClient',
       };
 
       return {
@@ -232,13 +287,20 @@ export function registerCalendarResources(registry: ResourceRegistry): void {
  * Registers Google Drive-related resources.
  *
  * Static resources:
- * - `drive://recent` — recently modified files
- * - `drive://shared` — files shared with me
+ * - `drive://recent` -- recently modified files
+ * - `drive://shared` -- files shared with me
  *
  * Template resources:
- * - `drive://{fileId}/metadata` — metadata for a specific file
+ * - `drive://{fileId}/metadata` -- metadata for a specific file
+ *
+ * @param registry - The resource registry to register on.
+ * @param http - Optional authenticated HttpClient. When provided, real
+ *               Drive API calls are made; otherwise placeholder JSON is
+ *               returned.
  */
-export function registerDriveResources(registry: ResourceRegistry): void {
+export function registerDriveResources(registry: ResourceRegistry, http?: HttpClient): void {
+  const driveApi: DriveApi | null = http ? createDriveApi(http) : null;
+
   // Static: recently modified files
   registry.registerResource(
     {
@@ -248,11 +310,24 @@ export function registerDriveResources(registry: ResourceRegistry): void {
       mimeType: 'application/json',
     },
     async (uri: string, _params: Record<string, string>): Promise<ResourceContent> => {
-      // TODO: Replace with actual Google Drive API call
-      // e.g. drive.files.list({ orderBy: 'modifiedTime desc', pageSize: 10 })
+      if (driveApi) {
+        const result = await driveApi.listFiles({
+          orderBy: 'modifiedTime desc',
+          pageSize: 10,
+        });
+        if (result.ok) {
+          return { uri, mimeType: 'application/json', text: JSON.stringify(result.value, null, 2) };
+        }
+        return {
+          uri,
+          mimeType: 'application/json',
+          text: JSON.stringify({ error: result.error.message }, null, 2),
+        };
+      }
+
       const placeholder = {
         files: [],
-        _note: 'Placeholder — wire up Google Drive API here',
+        _note: 'Placeholder -- wire up Google Drive API by providing an HttpClient',
       };
 
       return {
@@ -272,11 +347,23 @@ export function registerDriveResources(registry: ResourceRegistry): void {
       mimeType: 'application/json',
     },
     async (uri: string, _params: Record<string, string>): Promise<ResourceContent> => {
-      // TODO: Replace with actual Google Drive API call
-      // e.g. drive.files.list({ q: "sharedWithMe=true", pageSize: 10 })
+      if (driveApi) {
+        const result = await driveApi.searchFiles('sharedWithMe=true', {
+          pageSize: 10,
+        });
+        if (result.ok) {
+          return { uri, mimeType: 'application/json', text: JSON.stringify(result.value, null, 2) };
+        }
+        return {
+          uri,
+          mimeType: 'application/json',
+          text: JSON.stringify({ error: result.error.message }, null, 2),
+        };
+      }
+
       const placeholder = {
         files: [],
-        _note: 'Placeholder — wire up Google Drive API here',
+        _note: 'Placeholder -- wire up Google Drive API by providing an HttpClient',
       };
 
       return {
@@ -296,14 +383,26 @@ export function registerDriveResources(registry: ResourceRegistry): void {
       mimeType: 'application/json',
     },
     async (uri: string, params: Record<string, string>): Promise<ResourceContent> => {
-      // TODO: Replace with actual Google Drive API call
-      // e.g. drive.files.get({ fileId: params.fileId, fields: '*' })
+      const fileId = params['fileId'] as string;
+
+      if (driveApi) {
+        const result = await driveApi.getFile(fileId);
+        if (result.ok) {
+          return { uri, mimeType: 'application/json', text: JSON.stringify(result.value, null, 2) };
+        }
+        return {
+          uri,
+          mimeType: 'application/json',
+          text: JSON.stringify({ error: result.error.message }, null, 2),
+        };
+      }
+
       const placeholder = {
-        fileId: params['fileId'],
+        fileId,
         name: null,
         mimeType: null,
         modifiedTime: null,
-        _note: 'Placeholder — wire up Google Drive API here',
+        _note: 'Placeholder -- wire up Google Drive API by providing an HttpClient',
       };
 
       return {
