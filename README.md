@@ -5,6 +5,8 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Node.js](https://img.shields.io/badge/Node.js-%3E%3D22-green.svg)](https://nodejs.org/)
 [![TypeScript](https://img.shields.io/badge/TypeScript-strict-blue.svg)](https://www.typescriptlang.org/)
+[![Coverage](https://img.shields.io/badge/Coverage-100%25-brightgreen.svg)](#testing)
+[![Tests](https://img.shields.io/badge/Tests-2%2C346-brightgreen.svg)](#testing)
 
 **OpenWorkspace** (`@openworkspace/*`) provides type-safe access to 15 Google Workspace services through three interfaces: a programmatic TypeScript API, a zero-dependency CLI (`ows`), and a Model Context Protocol (MCP) server with 28 tools for AI assistants.
 
@@ -25,7 +27,7 @@ npm install @openworkspace/core @openworkspace/gmail
 - **Micro-kernel plugin architecture** -- each service is a standalone, independently installable package
 - **ESM-only, TypeScript strict mode** -- modern, tree-shakeable modules
 - **Node.js >= 22** -- leverages native fetch, crypto, and other built-in APIs
-- **1111 tests passing** -- comprehensive coverage across all packages
+- **2,346 tests, 100% statement coverage** -- across all 19 packages
 
 ---
 
@@ -73,7 +75,7 @@ ows gmail send --to alice@example.com --subject "Hello"
 
 # Calendar
 ows calendar events --today
-ows calendar create "Team Standup" --date 2025-01-15 --time 09:00
+ows calendar create "Team Standup" --date 2026-03-15 --time 09:00
 
 # Drive
 ows drive search "quarterly report"
@@ -126,27 +128,27 @@ Pipelines support `${{ expr }}` expressions, `forEach` iteration, `parallel` exe
 
 ## Packages
 
-| Package | Description | Path |
-|---------|-------------|------|
-| [`@openworkspace/core`](packages/core) | Kernel, Result type, errors, events, logger, HTTP client, auth (OAuth2, service accounts), config | `packages/core` |
-| [`@openworkspace/mcp`](packages/mcp) | MCP server -- JSON-RPC 2.0, tool registry (28 tools), stdio + HTTP/SSE transports | `packages/mcp` |
-| [`@openworkspace/pipeline`](packages/pipeline) | YAML workflow engine -- expression evaluator, forEach, parallel, retries | `packages/pipeline` |
-| [`@openworkspace/cli`](packages/cli) | Zero-dep CLI parser with 19 command groups | `packages/cli` |
-| [`@openworkspace/gmail`](packages/gmail) | Gmail API -- search, read, send, labels, threads | `packages/gmail` |
-| [`@openworkspace/calendar`](packages/calendar) | Calendar API -- events, create, free/busy | `packages/calendar` |
-| [`@openworkspace/drive`](packages/drive) | Drive API -- search, read, upload, permissions | `packages/drive` |
-| [`@openworkspace/sheets`](packages/sheets) | Sheets API -- read, write, append, format | `packages/sheets` |
-| [`@openworkspace/docs`](packages/docs) | Docs API -- get, create, batch update | `packages/docs` |
-| [`@openworkspace/slides`](packages/slides) | Slides API -- get, create, modify presentations | `packages/slides` |
-| [`@openworkspace/contacts`](packages/contacts) | Contacts API -- search, list, create | `packages/contacts` |
-| [`@openworkspace/tasks`](packages/tasks) | Tasks API -- list, create, complete, delete | `packages/tasks` |
-| [`@openworkspace/chat`](packages/chat) | Chat API -- send messages, manage spaces | `packages/chat` |
-| [`@openworkspace/classroom`](packages/classroom) | Classroom API -- courses, coursework, students | `packages/classroom` |
-| [`@openworkspace/forms`](packages/forms) | Forms API -- get, create, responses | `packages/forms` |
-| [`@openworkspace/appscript`](packages/appscript) | Apps Script API -- run scripts, manage projects | `packages/appscript` |
-| [`@openworkspace/people`](packages/people) | People API -- profiles, connections | `packages/people` |
-| [`@openworkspace/groups`](packages/groups) | Groups API -- list, members, settings | `packages/groups` |
-| [`@openworkspace/keep`](packages/keep) | Keep API -- notes, lists | `packages/keep` |
+| Package | Description |
+|---------|-------------|
+| [`@openworkspace/core`](packages/core) | Kernel, Result type, errors, events, logger, HTTP client, auth (OAuth2, service accounts), config |
+| [`@openworkspace/cli`](packages/cli) | Zero-dep CLI parser with 19 command groups, output formatters, shell completions |
+| [`@openworkspace/mcp`](packages/mcp) | MCP server -- JSON-RPC 2.0, 28 tools, stdio + HTTP/SSE transports |
+| [`@openworkspace/pipeline`](packages/pipeline) | YAML workflow engine -- expression evaluator, forEach, parallel, retries |
+| [`@openworkspace/gmail`](packages/gmail) | Gmail -- search, read, send, labels, threads, drafts |
+| [`@openworkspace/calendar`](packages/calendar) | Calendar -- events, create, free/busy, calendar list |
+| [`@openworkspace/drive`](packages/drive) | Drive -- search, upload, download, folders, permissions |
+| [`@openworkspace/sheets`](packages/sheets) | Sheets -- read, write, append, format, structure |
+| [`@openworkspace/docs`](packages/docs) | Docs -- get, create, batch update, export |
+| [`@openworkspace/slides`](packages/slides) | Slides -- presentations, slide ops, speaker notes, export |
+| [`@openworkspace/contacts`](packages/contacts) | Contacts -- search, list, create, directory |
+| [`@openworkspace/tasks`](packages/tasks) | Tasks -- task lists, tasks CRUD |
+| [`@openworkspace/chat`](packages/chat) | Chat -- spaces, messages, direct messages |
+| [`@openworkspace/classroom`](packages/classroom) | Classroom -- courses, coursework, roster, submissions |
+| [`@openworkspace/forms`](packages/forms) | Forms -- get, create, responses |
+| [`@openworkspace/appscript`](packages/appscript) | Apps Script -- run scripts, manage projects |
+| [`@openworkspace/people`](packages/people) | People -- profiles, manager/reports relations |
+| [`@openworkspace/groups`](packages/groups) | Groups -- list, members, settings |
+| [`@openworkspace/keep`](packages/keep) | Keep -- notes, attachments |
 
 ---
 
@@ -177,28 +179,15 @@ Pipelines support `${{ expr }}` expressions, `forEach` iteration, `parallel` exe
 
 ### Core Concepts
 
-**Result Pattern** -- All functions return `Result<T, E>` instead of throwing exceptions:
+**Result Pattern** -- All functions return `Result<T, E>` instead of throwing:
 
 ```typescript
 type Result<T, E> = { ok: true; value: T } | { ok: false; error: E };
 ```
 
-**Plugin Architecture** -- Each service registers as a plugin with the kernel:
+**Plugin Architecture** -- Each service registers as a plugin with the kernel. Install only what you need.
 
-```typescript
-const kernel = createKernel();
-// Plugins register commands and tools
-// Kernel manages lifecycle, events, and dependency injection
-```
-
-**HttpClient** -- Authenticated HTTP with request/response/error interceptors:
-
-```typescript
-const http = createHttpClient({
-  baseUrl: 'https://www.googleapis.com',
-  auth: { accessToken: token },
-});
-```
+**HttpClient** -- Authenticated HTTP with request/response/error interceptors, built on native `fetch`.
 
 ### MCP Tools
 
@@ -255,27 +244,26 @@ pnpm install
 ### Build
 
 ```bash
-pnpm build        # Build all packages (topological order via Turbo)
+pnpm build          # Build all packages (topological order via Turbo)
 ```
 
-### Test
+### Testing
 
 ```bash
-pnpm test          # Run all 1111 tests
-pnpm test:coverage # Run tests with coverage
+pnpm test           # Run all 2,346 tests
+pnpm test:coverage  # Run tests with coverage (100% statement coverage)
+pnpm typecheck      # TypeScript strict mode check
 ```
 
-### Type Check
+### Manual Testing with Real Google Account
 
 ```bash
-pnpm typecheck     # TypeScript strict mode check
+pnpm quickstart     # Interactive setup wizard for Google OAuth
+pnpm smoke-test     # Run CLI commands against a real Google account
+pnpm test:mcp       # Test MCP server via stdio JSON-RPC
 ```
 
-### Clean
-
-```bash
-pnpm clean         # Remove all dist/ directories
-```
+See [scripts/README.md](scripts/README.md) for prerequisites and detailed setup instructions.
 
 ### Project Structure
 
@@ -283,9 +271,9 @@ pnpm clean         # Remove all dist/ directories
 openworkspace/
   packages/
     core/          # Kernel, Result, errors, events, logger, HTTP, auth, config
+    cli/           # CLI parser and command handlers
     mcp/           # MCP server, JSON-RPC 2.0, tool registry, transports
     pipeline/      # YAML workflow engine, expression evaluator
-    cli/           # CLI parser and command handlers
     gmail/         # Gmail service plugin
     calendar/      # Calendar service plugin
     drive/         # Drive service plugin
@@ -301,7 +289,9 @@ openworkspace/
     people/        # People service plugin
     groups/        # Groups service plugin
     keep/          # Keep service plugin
-  turbo.json       # Turborepo task configuration
+  scripts/         # Quickstart, smoke test, MCP test scripts
+  docs/            # Architecture, specification, roadmap
+  turbo.json
   pnpm-workspace.yaml
   tsconfig.json
 ```
@@ -331,10 +321,20 @@ const auth = createServiceAccountAuth(key);
 
 ---
 
+## Documentation
+
+- [Architecture](docs/architecture.md) -- design decisions and package structure
+- [Specification](docs/specification.md) -- project spec and constraints
+- [Roadmap](docs/roadmap.md) -- milestones and task tracking
+- [Scripts Guide](scripts/README.md) -- manual testing setup
+
+---
+
 ## Links
 
 - **GitHub**: [github.com/ersinkoc/openworkspace](https://github.com/ersinkoc/openworkspace)
 - **Website**: [openworkspace.oxog.dev](https://openworkspace.oxog.dev)
+- **Changelog**: [CHANGELOG.md](CHANGELOG.md)
 
 ## License
 
