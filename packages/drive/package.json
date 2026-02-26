@@ -2,7 +2,18 @@
   "name": "@openworkspace/drive",
   "version": "0.1.0",
   "description": "Google Drive API client for files, folders, and permissions",
-  "keywords": ["google-drive", "drive", "file-storage", "upload", "download", "google-workspace", "typescript", "api", "folders", "permissions"],
+  "keywords": [
+    "google-drive",
+    "drive",
+    "file-storage",
+    "upload",
+    "download",
+    "google-workspace",
+    "typescript",
+    "api",
+    "folders",
+    "permissions"
+  ],
   "author": "Ersin Koc",
   "license": "MIT",
   "repository": {
@@ -35,5 +46,8 @@
     "tsup": "^8.3.6",
     "typescript": "^5.7.3",
     "vitest": "^3.0.0"
-  }
+  },
+  "files": [
+    "dist"
+  ]
 }

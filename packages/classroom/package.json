@@ -2,7 +2,17 @@
   "name": "@openworkspace/classroom",
   "version": "0.1.0",
   "description": "Google Classroom API client for courses, assignments, and grading",
-  "keywords": ["google-classroom", "classroom", "education", "courses", "google-workspace", "typescript", "api", "lms", "grading"],
+  "keywords": [
+    "google-classroom",
+    "classroom",
+    "education",
+    "courses",
+    "google-workspace",
+    "typescript",
+    "api",
+    "lms",
+    "grading"
+  ],
   "author": "Ersin Koc",
   "license": "MIT",
   "repository": {
@@ -35,5 +45,8 @@
     "tsup": "^8.3.6",
     "typescript": "^5.7.3",
     "vitest": "^3.0.0"
-  }
+  },
+  "files": [
+    "dist"
+  ]
 }

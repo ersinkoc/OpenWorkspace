@@ -2,7 +2,18 @@
   "name": "@openworkspace/gmail",
   "version": "0.1.0",
   "description": "Gmail API client for messages, threads, labels, and drafts",
-  "keywords": ["gmail", "google-gmail", "email", "google-workspace", "typescript", "api", "messages", "threads", "labels", "drafts"],
+  "keywords": [
+    "gmail",
+    "google-gmail",
+    "email",
+    "google-workspace",
+    "typescript",
+    "api",
+    "messages",
+    "threads",
+    "labels",
+    "drafts"
+  ],
   "author": "Ersin Koc",
   "license": "MIT",
   "repository": {
@@ -35,5 +46,8 @@
     "tsup": "^8.3.6",
     "typescript": "^5.7.3",
     "vitest": "^3.0.0"
-  }
+  },
+  "files": [
+    "dist"
+  ]
 }

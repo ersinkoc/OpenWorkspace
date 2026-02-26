@@ -2,7 +2,16 @@
   "name": "@openworkspace/contacts",
   "version": "0.1.0",
   "description": "Google Contacts API client via People API",
-  "keywords": ["google-contacts", "contacts", "people-api", "directory", "google-workspace", "typescript", "api", "address-book"],
+  "keywords": [
+    "google-contacts",
+    "contacts",
+    "people-api",
+    "directory",
+    "google-workspace",
+    "typescript",
+    "api",
+    "address-book"
+  ],
   "author": "Ersin Koc",
   "license": "MIT",
   "repository": {
@@ -35,5 +44,8 @@
     "tsup": "^8.3.6",
     "typescript": "^5.7.3",
     "vitest": "^3.0.0"
-  }
+  },
+  "files": [
+    "dist"
+  ]
 }

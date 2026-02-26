@@ -2,7 +2,16 @@
   "name": "@openworkspace/keep",
   "version": "0.1.0",
   "description": "Google Keep API client for notes and lists",
-  "keywords": ["google-keep", "keep", "notes", "lists", "google-workspace", "typescript", "api", "productivity"],
+  "keywords": [
+    "google-keep",
+    "keep",
+    "notes",
+    "lists",
+    "google-workspace",
+    "typescript",
+    "api",
+    "productivity"
+  ],
   "author": "Ersin Koc",
   "license": "MIT",
   "repository": {
@@ -35,5 +44,8 @@
     "tsup": "^8.3.6",
     "typescript": "^5.7.3",
     "vitest": "^3.0.0"
-  }
+  },
+  "files": [
+    "dist"
+  ]
 }

@@ -2,7 +2,16 @@
   "name": "@openworkspace/forms",
   "version": "0.1.0",
   "description": "Google Forms API client for forms and responses",
-  "keywords": ["google-forms", "forms", "surveys", "responses", "google-workspace", "typescript", "api", "quizzes"],
+  "keywords": [
+    "google-forms",
+    "forms",
+    "surveys",
+    "responses",
+    "google-workspace",
+    "typescript",
+    "api",
+    "quizzes"
+  ],
   "author": "Ersin Koc",
   "license": "MIT",
   "repository": {
@@ -35,5 +44,8 @@
     "tsup": "^8.3.6",
     "typescript": "^5.7.3",
     "vitest": "^3.0.0"
-  }
+  },
+  "files": [
+    "dist"
+  ]
 }

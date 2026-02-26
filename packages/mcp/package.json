@@ -2,7 +2,18 @@
   "name": "@openworkspace/mcp",
   "version": "0.1.0",
   "description": "MCP server with tool registry, stdio and HTTP/SSE transports",
-  "keywords": ["mcp", "mcp-server", "model-context-protocol", "claude", "ai-tools", "json-rpc", "stdio", "sse", "google-workspace", "typescript"],
+  "keywords": [
+    "mcp",
+    "mcp-server",
+    "model-context-protocol",
+    "claude",
+    "ai-tools",
+    "json-rpc",
+    "stdio",
+    "sse",
+    "google-workspace",
+    "typescript"
+  ],
   "author": "Ersin Koc",
   "license": "MIT",
   "repository": {
@@ -53,5 +64,8 @@
     "tsup": "^8.3.6",
     "typescript": "^5.7.3",
     "vitest": "^3.0.0"
-  }
+  },
+  "files": [
+    "dist"
+  ]
 }

@@ -2,7 +2,16 @@
   "name": "@openworkspace/groups",
   "version": "0.1.0",
   "description": "Google Cloud Identity Groups API client",
-  "keywords": ["google-groups", "cloud-identity", "groups", "membership", "google-workspace", "typescript", "api", "iam"],
+  "keywords": [
+    "google-groups",
+    "cloud-identity",
+    "groups",
+    "membership",
+    "google-workspace",
+    "typescript",
+    "api",
+    "iam"
+  ],
   "author": "Ersin Koc",
   "license": "MIT",
   "repository": {
@@ -35,5 +44,8 @@
     "tsup": "^8.3.6",
     "typescript": "^5.7.3",
     "vitest": "^3.0.0"
-  }
+  },
+  "files": [
+    "dist"
+  ]
 }

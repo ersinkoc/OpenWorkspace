@@ -2,7 +2,16 @@
   "name": "@openworkspace/chat",
   "version": "0.1.0",
   "description": "Google Chat API client for spaces and messages",
-  "keywords": ["google-chat", "chat", "messaging", "spaces", "google-workspace", "typescript", "api", "dm"],
+  "keywords": [
+    "google-chat",
+    "chat",
+    "messaging",
+    "spaces",
+    "google-workspace",
+    "typescript",
+    "api",
+    "dm"
+  ],
   "author": "Ersin Koc",
   "license": "MIT",
   "repository": {
@@ -35,5 +44,8 @@
     "tsup": "^8.3.6",
     "typescript": "^5.7.3",
     "vitest": "^3.0.0"
-  }
+  },
+  "files": [
+    "dist"
+  ]
 }

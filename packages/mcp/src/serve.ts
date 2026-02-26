@@ -15,6 +15,8 @@
 
 import { createToolRegistry } from './registry.js';
 import { registerServiceTools } from './tools.js';
+import { createResourceRegistry, registerCalendarResources, registerDriveResources } from './resources.js';
+import { createPromptRegistry, registerBuiltinPrompts } from './prompts.js';
 import { createMcpServer } from './server.js';
 import { createStdioTransport } from './transport/stdio.js';
 import { createHttpTransport } from './transport/http.js';
@@ -31,17 +33,23 @@ if (portArg !== undefined && (Number.isNaN(port) || port < 0 || port > 65535)) {
   process.exit(1);
 }
 
-// Create the registry and register all service tools
-const registry = createToolRegistry();
-registerServiceTools(registry);
+// Create registries and register all service tools, resources, and prompts
+const toolRegistry = createToolRegistry();
+registerServiceTools(toolRegistry);
 
-// Create the server
-const server = createMcpServer(registry, {
+const resourceRegistry = createResourceRegistry();
+registerCalendarResources(resourceRegistry);
+registerDriveResources(resourceRegistry);
+
+const promptRegistry = createPromptRegistry();
+registerBuiltinPrompts(promptRegistry);
+
+// Create the server with all registries
+const server = createMcpServer(toolRegistry, {
   name: 'openworkspace',
   version: '0.1.0',
-  capabilities: {
-    tools: { listChanged: false },
-  },
+  resourceRegistry,
+  promptRegistry,
 });
 
 if (useHttp) {

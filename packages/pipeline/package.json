@@ -2,7 +2,18 @@
   "name": "@openworkspace/pipeline",
   "version": "0.1.0",
   "description": "YAML workflow engine with expressions, forEach, parallel, and retries",
-  "keywords": ["pipeline", "workflow", "yaml", "automation", "orchestration", "expression-evaluator", "foreach", "parallel", "typescript", "google-workspace"],
+  "keywords": [
+    "pipeline",
+    "workflow",
+    "yaml",
+    "automation",
+    "orchestration",
+    "expression-evaluator",
+    "foreach",
+    "parallel",
+    "typescript",
+    "google-workspace"
+  ],
   "author": "Ersin Koc",
   "license": "MIT",
   "repository": {
@@ -35,5 +46,8 @@
     "tsup": "^8.3.6",
     "typescript": "^5.7.3",
     "vitest": "^3.0.0"
-  }
+  },
+  "files": [
+    "dist"
+  ]
 }

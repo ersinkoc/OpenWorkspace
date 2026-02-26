@@ -2,7 +2,16 @@
   "name": "@openworkspace/tasks",
   "version": "0.1.0",
   "description": "Google Tasks API client for task lists and tasks",
-  "keywords": ["google-tasks", "tasks", "todo", "tasklist", "google-workspace", "typescript", "api", "productivity"],
+  "keywords": [
+    "google-tasks",
+    "tasks",
+    "todo",
+    "tasklist",
+    "google-workspace",
+    "typescript",
+    "api",
+    "productivity"
+  ],
   "author": "Ersin Koc",
   "license": "MIT",
   "repository": {
@@ -35,5 +44,8 @@
     "tsup": "^8.3.6",
     "typescript": "^5.7.3",
     "vitest": "^3.0.0"
-  }
+  },
+  "files": [
+    "dist"
+  ]
 }

@@ -2,7 +2,16 @@
   "name": "@openworkspace/people",
   "version": "0.1.0",
   "description": "Google People API client for profiles and directory",
-  "keywords": ["google-people", "people-api", "profiles", "directory", "google-workspace", "typescript", "api", "contacts"],
+  "keywords": [
+    "google-people",
+    "people-api",
+    "profiles",
+    "directory",
+    "google-workspace",
+    "typescript",
+    "api",
+    "contacts"
+  ],
   "author": "Ersin Koc",
   "license": "MIT",
   "repository": {
@@ -35,5 +44,8 @@
     "tsup": "^8.3.6",
     "typescript": "^5.7.3",
     "vitest": "^3.0.0"
-  }
+  },
+  "files": [
+    "dist"
+  ]
 }
