@@ -1,0 +1,108 @@
+# OpenWorkspace
+
+> Zero-dependency TypeScript toolkit for Google Workspace -- CLI, API, MCP Server.
+
+GitHub: https://github.com/ersinkoc/openworkspace
+License: MIT | Node.js >= 22 | ESM-only | TypeScript strict
+
+## Install
+
+npm install @openworkspace/core @openworkspace/gmail
+
+## Core Concepts
+
+- Result<T,E> pattern: every function returns `{ ok: true, value: T }` or `{ ok: false, error: E }` -- never throws
+- Plugin architecture: each service is a standalone package, registers with the kernel
+- HttpClient: authenticated HTTP with request/response/error interceptors
+- Auth: OAuth 2.0 (device code flow) and service account JWT
+
+## Packages (19)
+
+@openworkspace/core - kernel, Result type, errors, events, logger, HTTP client, auth, config
+@openworkspace/mcp - MCP server, JSON-RPC 2.0, tool registry (28 tools), stdio + HTTP/SSE
+@openworkspace/pipeline - YAML workflow engine, expression evaluator, forEach, parallel, retries
+@openworkspace/cli - zero-dep CLI parser, 19 command groups
+@openworkspace/gmail - search, read, send, labels, threads
+@openworkspace/calendar - events, create, free/busy
+@openworkspace/drive - search, read, upload, permissions
+@openworkspace/sheets - read, write, append, format
+@openworkspace/docs - get, create, batch update
+@openworkspace/slides - get, create, modify presentations
+@openworkspace/contacts - search, list, create
+@openworkspace/tasks - list, create, complete, delete
+@openworkspace/chat - send messages, manage spaces
+@openworkspace/classroom - courses, coursework, students
+@openworkspace/forms - get, create, responses
+@openworkspace/appscript - run scripts, manage projects
+@openworkspace/people - profiles, connections
+@openworkspace/groups - list, members, settings
+@openworkspace/keep - notes, lists
+
+## API Pattern
+
+All service functions follow this signature:
+
+functionName(http: HttpClient, params) => Promise<Result<T, WorkspaceError>>
+
+Example:
+
+```typescript
+import { createHttpClient } from '@openworkspace/core';
+import { searchMessages } from '@openworkspace/gmail';
+
+const http = createHttpClient({ baseUrl: 'https://www.googleapis.com', auth: { accessToken: token } });
+const result = await searchMessages(http, { query: 'from:boss' });
+if (result.ok) console.log(result.value);
+else console.error(result.error.message);
+```
+
+Result helpers: ok(value), err(error), unwrap(result), unwrapOr(result, fallback), map(result, fn), mapErr(result, fn)
+
+Error types: WorkspaceError, ConfigError, AuthError, NetworkError, RateLimitError, ValidationError, PluginError, NotFoundError
+
+## CLI
+
+Command format: ows <service> <action> [flags]
+
+```
+ows auth add user@example.com
+ows gmail search "from:boss"
+ows gmail send --to alice@example.com --subject "Hi"
+ows calendar events --today
+ows drive search "quarterly report"
+ows drive upload ./file.pdf
+ows sheets read SPREADSHEET_ID "Sheet1!A1:D10"
+ows tasks list
+ows mcp serve --stdio
+```
+
+## MCP Server
+
+28 tools for AI assistants. Start with: npx @openworkspace/mcp serve --stdio
+
+Tools: gmail_search, gmail_read, gmail_send, gmail_labels, calendar_events, calendar_create, calendar_freebusy, drive_search, drive_read, drive_upload, sheets_read, sheets_write, tasks_list, tasks_create, tasks_complete, contacts_search, docs_get, docs_create, slides_get, slides_create, classroom_courses, forms_get, chat_send, keep_list, appscript_run, people_me, groups_list, workspace_search
+
+Claude Desktop config:
+
+```json
+{ "mcpServers": { "openworkspace": { "command": "npx", "args": ["@openworkspace/mcp", "serve", "--stdio"] } } }
+```
+
+## Pipeline
+
+YAML workflow with ${{ expr }} expressions, forEach, parallel, retries.
+
+```yaml
+name: example
+steps:
+  - id: search
+    action: gmail.search
+    with: { query: "has:attachment newer_than:1d" }
+  - id: upload
+    action: drive.upload
+    forEach: ${{ steps.search.result }}
+```
+
+## Development
+
+pnpm install && pnpm build && pnpm test

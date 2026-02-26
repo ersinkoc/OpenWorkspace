@@ -1,0 +1,44 @@
+{
+  "name": "@openworkspace/cli",
+  "version": "0.1.0",
+  "description": "Zero-dependency CLI for Google Workspace services",
+  "keywords": ["cli", "command-line", "google-workspace", "ows", "terminal", "zero-dependency", "typescript", "gmail", "calendar", "drive"],
+  "author": "Ersin Koc",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ersinkoc/openworkspace.git"
+  },
+  "homepage": "https://openworkspace.oxog.dev",
+  "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
+  "bin": {
+    "ows": "./dist/cli.js"
+  },
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    }
+  },
+  "scripts": {
+    "build": "tsup src/index.ts src/cli.ts --format esm --dts --clean",
+    "test": "vitest run",
+    "test:coverage": "vitest run --coverage",
+    "typecheck": "tsc --noEmit",
+    "clean": "rm -rf dist"
+  },
+  "dependencies": {
+    "@openworkspace/core": "workspace:*",
+    "@openworkspace/mcp": "workspace:*",
+    "@openworkspace/pipeline": "workspace:*"
+  },
+  "devDependencies": {
+    "tsup": "^8.3.6",
+    "typescript": "^5.7.3",
+    "vitest": "^3.0.0",
+    "@types/node": "^22.0.0"
+  }
+}

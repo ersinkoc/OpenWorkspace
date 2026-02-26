@@ -1,0 +1,18 @@
+{
+  "mcpServers": {
+    "openworkspace": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "@openworkspace/mcp",
+        "serve",
+        "--transport",
+        "stdio"
+      ],
+      "env": {
+        "OPENWORKSPACE_CONFIG_DIR": "~/.openworkspace",
+        "OPENWORKSPACE_LOG_LEVEL": "info"
+      }
+    }
+  }
+}

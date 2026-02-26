@@ -1,0 +1,30 @@
+name: email-attachment-backup
+description: Search for emails with attachments and back them up to Drive.
+
+steps:
+  - id: search_emails
+    action: gmail.searchMessages
+    params:
+      q: "has:attachment newer_than:7d"
+      maxResults: 20
+
+  - id: create_backup_folder
+    action: drive.createFolder
+    params:
+      name: "Email Backups - {{ now | date('YYYY-MM-DD') }}"
+
+  - id: download_attachments
+    action: gmail.getAttachments
+    params:
+      messageIds: "{{ steps.search_emails.result.messages | pluck('id') }}"
+
+  - id: upload_to_drive
+    action: drive.uploadFiles
+    params:
+      files: "{{ steps.download_attachments.result }}"
+      parentId: "{{ steps.create_backup_folder.result.id }}"
+
+  - id: log_summary
+    action: core.log
+    params:
+      message: "Backed up {{ steps.download_attachments.result | length }} attachments to Drive folder {{ steps.create_backup_folder.result.name }}"

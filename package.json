@@ -1,0 +1,39 @@
+{
+  "name": "openworkspace",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Google Workspace CLI + Library + MCP Server",
+  "keywords": [
+    "google-workspace", "gmail", "google-calendar", "google-drive",
+    "google-sheets", "google-docs", "cli", "mcp", "mcp-server",
+    "typescript", "zero-dependency", "pipeline", "automation"
+  ],
+  "author": "Ersin Koc",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ersinkoc/openworkspace.git"
+  },
+  "homepage": "https://openworkspace.oxog.dev",
+  "engines": {
+    "node": ">=22",
+    "pnpm": ">=9"
+  },
+  "scripts": {
+    "build": "turbo run build",
+    "test": "turbo run test",
+    "test:coverage": "turbo run test:coverage",
+    "typecheck": "turbo run typecheck",
+    "clean": "turbo run clean"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "@vitest/coverage-v8": "^3.0.0",
+    "tsup": "^8.3.6",
+    "turbo": "^2.4.0",
+    "typescript": "^5.7.3",
+    "vitest": "^3.0.0"
+  },
+  "packageManager": "pnpm@10.0.0"
+}
