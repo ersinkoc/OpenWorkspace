@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
 import * as os from 'node:os';
@@ -327,6 +327,20 @@ describe('token-store', () => {
     it('should contain openworkspace in the path', () => {
       const dir = getDefaultConfigDir();
       expect(dir).toContain('openworkspace');
+    });
+
+    it('should return a platform-appropriate path containing openworkspace', () => {
+      // This test verifies the function returns a path for the current platform
+      const dir = getDefaultConfigDir();
+      // On win32, should use APPDATA; on darwin, Library; on linux, .config
+      const platform = os.platform();
+      if (platform === 'win32') {
+        expect(dir.toLowerCase()).toContain('openworkspace');
+      } else if (platform === 'darwin') {
+        expect(dir).toContain(path.join('Library', 'Application Support', 'openworkspace'));
+      } else {
+        expect(dir).toContain('openworkspace');
+      }
     });
   });
 });

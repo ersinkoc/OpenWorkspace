@@ -1889,7 +1889,7 @@ export async function main(): Promise<number> {
   return command.handler({ ...parsed.value, _: positional.slice(1) });
 }
 
-/* c8 ignore next 5 -- CLI entry bootstrap */
+/* c8 ignore next 6 -- CLI entry bootstrap */
 if (process.env['NODE_ENV'] !== 'test') {
   main().then(code => process.exit(code)).catch(error => {
     console.error(error);

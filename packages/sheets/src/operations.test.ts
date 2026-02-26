@@ -179,6 +179,22 @@ describe('write operations', () => {
       const result = await batchUpdateValues(http, 'x', []);
       expect(result.ok).toBe(false);
     });
+
+    it('should include optional response properties in body', async () => {
+      vi.mocked(http.post).mockResolvedValueOnce(mockOk({ totalUpdatedCells: 4 }));
+      const result = await batchUpdateValues(http, 'abc', [
+        { range: 'A1:B2', values: [['a', 'b']] },
+      ], {
+        includeValuesInResponse: true,
+        responseDateTimeRenderOption: 'FORMATTED_STRING',
+        responseValueRenderOption: 'UNFORMATTED_VALUE',
+      });
+      expect(result.ok).toBe(true);
+      const body = vi.mocked(http.post).mock.calls[0]?.[1]?.body as Record<string, unknown>;
+      expect(body['includeValuesInResponse']).toBe(true);
+      expect(body['responseDateTimeRenderOption']).toBe('FORMATTED_STRING');
+      expect(body['responseValueRenderOption']).toBe('UNFORMATTED_VALUE');
+    });
   });
 });
 
@@ -209,6 +225,78 @@ describe('format operations', () => {
         format: { textFormat: { bold: true } },
       });
       expect(result.ok).toBe(false);
+    });
+
+    it('should build field mask for numberFormat', async () => {
+      vi.mocked(http.post).mockResolvedValueOnce(mockOk({ replies: [] }));
+      const result = await formatCells(http, 'abc', {
+        range: { sheetId: 0 },
+        format: { numberFormat: { type: 'NUMBER', pattern: '#,##0' } },
+      });
+      expect(result.ok).toBe(true);
+      const body = vi.mocked(http.post).mock.calls[0]?.[1]?.body as Record<string, unknown>;
+      const requests = body['requests'] as Array<{ repeatCell: { fields: string } }>;
+      expect(requests[0]?.repeatCell.fields).toContain('userEnteredFormat.numberFormat');
+    });
+
+    it('should build field mask for borders', async () => {
+      vi.mocked(http.post).mockResolvedValueOnce(mockOk({ replies: [] }));
+      const result = await formatCells(http, 'abc', {
+        range: { sheetId: 0 },
+        format: { borders: { top: { style: 'SOLID' } } },
+      });
+      expect(result.ok).toBe(true);
+      const body = vi.mocked(http.post).mock.calls[0]?.[1]?.body as Record<string, unknown>;
+      const requests = body['requests'] as Array<{ repeatCell: { fields: string } }>;
+      expect(requests[0]?.repeatCell.fields).toContain('userEnteredFormat.borders');
+    });
+
+    it('should build field mask for padding', async () => {
+      vi.mocked(http.post).mockResolvedValueOnce(mockOk({ replies: [] }));
+      const result = await formatCells(http, 'abc', {
+        range: { sheetId: 0 },
+        format: { padding: { top: 5 } },
+      });
+      expect(result.ok).toBe(true);
+      const body = vi.mocked(http.post).mock.calls[0]?.[1]?.body as Record<string, unknown>;
+      const requests = body['requests'] as Array<{ repeatCell: { fields: string } }>;
+      expect(requests[0]?.repeatCell.fields).toContain('userEnteredFormat.padding');
+    });
+
+    it('should build field mask for verticalAlignment', async () => {
+      vi.mocked(http.post).mockResolvedValueOnce(mockOk({ replies: [] }));
+      const result = await formatCells(http, 'abc', {
+        range: { sheetId: 0 },
+        format: { verticalAlignment: 'MIDDLE' },
+      });
+      expect(result.ok).toBe(true);
+      const body = vi.mocked(http.post).mock.calls[0]?.[1]?.body as Record<string, unknown>;
+      const requests = body['requests'] as Array<{ repeatCell: { fields: string } }>;
+      expect(requests[0]?.repeatCell.fields).toContain('userEnteredFormat.verticalAlignment');
+    });
+
+    it('should build field mask for wrapStrategy', async () => {
+      vi.mocked(http.post).mockResolvedValueOnce(mockOk({ replies: [] }));
+      const result = await formatCells(http, 'abc', {
+        range: { sheetId: 0 },
+        format: { wrapStrategy: 'WRAP' },
+      });
+      expect(result.ok).toBe(true);
+      const body = vi.mocked(http.post).mock.calls[0]?.[1]?.body as Record<string, unknown>;
+      const requests = body['requests'] as Array<{ repeatCell: { fields: string } }>;
+      expect(requests[0]?.repeatCell.fields).toContain('userEnteredFormat.wrapStrategy');
+    });
+
+    it('should build field mask for textFormat', async () => {
+      vi.mocked(http.post).mockResolvedValueOnce(mockOk({ replies: [] }));
+      const result = await formatCells(http, 'abc', {
+        range: { sheetId: 0 },
+        format: { textFormat: { bold: true } },
+      });
+      expect(result.ok).toBe(true);
+      const body = vi.mocked(http.post).mock.calls[0]?.[1]?.body as Record<string, unknown>;
+      const requests = body['requests'] as Array<{ repeatCell: { fields: string } }>;
+      expect(requests[0]?.repeatCell.fields).toContain('userEnteredFormat.textFormat');
     });
   });
 
@@ -268,6 +356,18 @@ describe('structure operations', () => {
       vi.mocked(http.post).mockResolvedValueOnce(mockErr('fail', 500));
       const result = await addSheet(http, 'x', 'Y');
       expect(result.ok).toBe(false);
+    });
+
+    it('should include index in properties when provided', async () => {
+      vi.mocked(http.post).mockResolvedValueOnce(mockOk({
+        replies: [{ addSheet: { properties: { sheetId: 2, title: 'AtIndex', index: 1 } } }],
+      }));
+      const result = await addSheet(http, 'abc', 'AtIndex', 1);
+      expect(result.ok).toBe(true);
+      if (result.ok) expect(result.value.title).toBe('AtIndex');
+      const body = vi.mocked(http.post).mock.calls[0]?.[1]?.body as Record<string, unknown>;
+      const requests = body['requests'] as Array<{ addSheet: { properties: Record<string, unknown> } }>;
+      expect(requests[0]?.addSheet.properties['index']).toBe(1);
     });
   });
 

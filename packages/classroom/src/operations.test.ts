@@ -65,6 +65,12 @@ describe('courses operations', () => {
       const result = await listCourses(http);
       expect(result.ok).toBe(false);
     });
+
+    it('should wrap non-WorkspaceError', async () => {
+      vi.mocked(http.get).mockResolvedValueOnce(err(new Error('raw') as unknown as NetworkError));
+      const result = await listCourses(http);
+      expect(result.ok).toBe(false);
+    });
   });
 
   describe('getCourse', () => {

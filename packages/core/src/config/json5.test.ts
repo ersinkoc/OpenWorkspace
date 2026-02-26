@@ -390,12 +390,68 @@ describe('json5', () => {
       expect(result.ok).toBe(false);
     });
 
+    it('should parse hex number that terminates before end of input', () => {
+      // 0xAG - G is not a hex char, so parsing stops at A and remaining G causes error or short hex
+      const result = parseJson5('[0xA, 1]');
+      expect(result.ok).toBe(true);
+      if (result.ok) {
+        expect(result.value).toEqual([10, 1]);
+      }
+    });
+
+    it('should parse hex number with only partial hex digits', () => {
+      // 0xF followed by non-hex chars
+      const result = parseJson5('{val: 0xF}');
+      expect(result.ok).toBe(true);
+      if (result.ok) {
+        expect((result.value as Record<string, number>).val).toBe(15);
+      }
+    });
+
     it('should handle non-ConfigError thrown during parsing', () => {
       // This is hard to trigger naturally, but empty trimmed input is handled
       // The catch block for non-ConfigError wraps it
       const result = parseJson5('   ');
       expect(result.ok).toBe(true);
       if (result.ok) expect(result.value).toBeNull();
+    });
+
+    it('should error on unexpected character in value position', () => {
+      // '@' does not match any parseValue branch
+      const result = parseJson5('@');
+      expect(result.ok).toBe(false);
+      if (!result.ok) {
+        expect(result.error.message).toContain('Unexpected character');
+      }
+    });
+
+    it('should error on unterminated object when input ends after comma', () => {
+      // Object has a key-value pair then comma, but input ends during
+      // whitespace skip at top of while loop before reading next key
+      const result = parseJson5('{a: 1,');
+      expect(result.ok).toBe(false);
+      if (!result.ok) {
+        expect(result.error.message).toContain('Unterminated object');
+      }
+    });
+
+    it('should error on unterminated array when input ends after comma', () => {
+      // Array has a value then comma, but input ends during
+      // whitespace skip at top of while loop before reading next value
+      const result = parseJson5('[1,');
+      expect(result.ok).toBe(false);
+      if (!result.ok) {
+        expect(result.error.message).toContain('Unterminated array');
+      }
+    });
+
+    it('should error on invalid number with just a plus sign', () => {
+      // '+' alone without digits or Infinity is an invalid number
+      const result = parseJson5('+');
+      expect(result.ok).toBe(false);
+      if (!result.ok) {
+        expect(result.error.message).toContain('Invalid number');
+      }
     });
   });
 });

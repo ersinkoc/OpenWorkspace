@@ -601,6 +601,50 @@ describe('server', () => {
         expect(result.isError).toBe(true);
       });
 
+      it('should return error when arguments is an array', async () => {
+        registry.register({
+          name: 'test_tool',
+          description: 'A test tool',
+          parameters: {},
+          handler: async () => 'ok',
+        });
+
+        const server = createMcpServer(registry, { name: 'test', version: '1.0' });
+        await initializeServer(server);
+        const response = await sendRequest(server, {
+          jsonrpc: '2.0',
+          id: 3,
+          method: 'tools/call',
+          params: { name: 'test_tool', arguments: [1, 2, 3] },
+        });
+        expect(response).not.toBeNull();
+        expect(response!.error).toBeDefined();
+        expect(response!.error!.code).toBe(-32602);
+        expect(response!.error!.message).toContain('"arguments" must be an object');
+      });
+
+      it('should return error when arguments is a string', async () => {
+        registry.register({
+          name: 'test_tool_str',
+          description: 'A test tool',
+          parameters: {},
+          handler: async () => 'ok',
+        });
+
+        const server = createMcpServer(registry, { name: 'test', version: '1.0' });
+        await initializeServer(server);
+        const response = await sendRequest(server, {
+          jsonrpc: '2.0',
+          id: 3,
+          method: 'tools/call',
+          params: { name: 'test_tool_str', arguments: 'not-an-object' },
+        });
+        expect(response).not.toBeNull();
+        expect(response!.error).toBeDefined();
+        expect(response!.error!.code).toBe(-32602);
+        expect(response!.error!.message).toContain('"arguments" must be an object');
+      });
+
       it('should serialize tool result data as JSON string', async () => {
         registry.register({
           name: 'json_tool',
@@ -1215,6 +1259,26 @@ describe('server', () => {
         expect(stderrSpy).toHaveBeenCalledWith(
           expect.stringContaining('transport broke'),
         );
+        stderrSpy.mockRestore();
+      });
+
+      it('should catch errors when transport.send() rejects during message processing', async () => {
+        const server = createMcpServer(registry, { name: 'test', version: '1.0' });
+        const transport = createMockTransport();
+
+        // Make transport.send reject to trigger the catch block (lines 529-532)
+        const sendSpy = vi.spyOn(transport, 'send').mockRejectedValue(new Error('send failed'));
+        const stderrSpy = vi.spyOn(process.stderr, 'write').mockReturnValue(true);
+        await server.connect(transport);
+
+        // Send an initialize request - handleMessage will succeed but transport.send will reject
+        transport.onMessage!(initializeRequest(1));
+        await new Promise((resolve) => setTimeout(resolve, 20));
+
+        expect(stderrSpy).toHaveBeenCalledWith(
+          expect.stringContaining('send failed'),
+        );
+        sendSpy.mockRestore();
         stderrSpy.mockRestore();
       });
 

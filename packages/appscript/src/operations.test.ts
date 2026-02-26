@@ -53,6 +53,12 @@ describe('projects operations', () => {
       const result = await getProject(http, 'x');
       expect(result.ok).toBe(false);
     });
+
+    it('should wrap non-WorkspaceError', async () => {
+      vi.mocked(http.get).mockResolvedValueOnce(err(new Error('raw') as unknown as NetworkError));
+      const result = await getProject(http, 'x');
+      expect(result.ok).toBe(false);
+    });
   });
 
   describe('createProject', () => {
@@ -144,6 +150,12 @@ describe('execute operations', () => {
 
     it('should propagate HTTP error', async () => {
       vi.mocked(http.post).mockResolvedValueOnce(mockErr('fail', 500));
+      const result = await runFunction(http, 'x', 'fn');
+      expect(result.ok).toBe(false);
+    });
+
+    it('should wrap non-WorkspaceError', async () => {
+      vi.mocked(http.post).mockResolvedValueOnce(err(new Error('raw') as unknown as NetworkError));
       const result = await runFunction(http, 'x', 'fn');
       expect(result.ok).toBe(false);
     });

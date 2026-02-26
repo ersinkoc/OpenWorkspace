@@ -676,6 +676,30 @@ describe('DocsApi facade', () => {
       expect(result.value).toBe('PDF_DATA');
     }
   });
+
+  it('delegates deleteContent through the facade', async () => {
+    http._postHandler.mockResolvedValueOnce(mockResponse(BATCH_UPDATE_RESPONSE_FIXTURE));
+
+    const api = createDocsApi(http);
+    const result = await api.deleteContent('doc-123', 10, 20);
+
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.value.documentId).toBe('doc-123');
+    }
+  });
+
+  it('delegates replaceAllText through the facade', async () => {
+    http._postHandler.mockResolvedValueOnce(mockResponse(BATCH_UPDATE_RESPONSE_FIXTURE));
+
+    const api = createDocsApi(http);
+    const result = await api.replaceAllText('doc-123', 'foo', 'bar');
+
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.value.documentId).toBe('doc-123');
+    }
+  });
 });
 
 // ---------------------------------------------------------------------------

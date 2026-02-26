@@ -433,6 +433,17 @@ describe('yaml', () => {
       }
     });
 
+    it('should handle object block with line that has no colon (breaks early)', () => {
+      // An object where a same-level line has no colon should stop parsing
+      const result = parseYaml('key: value\njust-a-word');
+      expect(result.ok).toBe(true);
+      if (result.ok) {
+        // Parser treats this as object with only first key
+        const val = result.value as Record<string, unknown>;
+        expect(val['key']).toBe('value');
+      }
+    });
+
     it('should handle stripComment with hash not preceded by space', () => {
       // A hash not preceded by space should not be treated as a comment
       const result = parseYaml('value: color#red');
@@ -442,5 +453,44 @@ describe('yaml', () => {
         expect(val['value']).toBe('color#red');
       }
     });
-  });
+
+    it('should return error for inconsistent indentation inside array block', () => {
+      // Array item followed by a line with greater indentation than the array block indent
+      // but that is not a valid nested element
+      const result = parseYaml('- first\n   - second');
+      expect(result.ok).toBe(false);
+    });
+
+    it('should parse array that stops when encountering non-array line', () => {
+      // An array followed by a key:value line at same indent level should stop the array
+      const result = parseYaml('items:\n  - a\n  - b\nother: value');
+      expect(result.ok).toBe(true);
+      if (result.ok) {
+        const val = result.value as Record<string, unknown>;
+        expect(val['items']).toEqual(['a', 'b']);
+        expect(val['other']).toBe('value');
+      }
+    });
+
+    it('should parse standalone scalar line when not array or object', () => {
+      // A nested value that is a plain scalar (not key:value, not array item)
+      const result = parseYaml('key:\n  simple_value');
+      expect(result.ok).toBe(true);
+      if (result.ok) {
+        const val = result.value as Record<string, unknown>;
+        expect(val['key']).toBe('simple_value');
+      }
+    });
+  
+    it('should break array parsing when encountering non-dash line at same indent', () => {
+      // When a top-level array is followed by a key:value line at the same
+      // indent, parseArrayBlock breaks out of the loop (lines 172-174).
+      const result = parseYaml('- item1\n- item2\nkey: value');
+      expect(result.ok).toBe(true);
+      if (result.ok) {
+        // parseYaml returns the array; the trailing key:value is not parsed
+        expect(result.value).toEqual(['item1', 'item2']);
+      }
+    });
+});
 });

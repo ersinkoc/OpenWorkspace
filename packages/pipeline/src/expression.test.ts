@@ -472,6 +472,25 @@ describe('evaluateExpression', () => {
     it('should throw on incomplete ternary', () => {
       expect(() => evaluateExpression('true ? 1', ctx)).toThrow();
     });
+
+    it('should throw on trailing content after valid expression', () => {
+      expect(() => evaluateExpression('42 extra', ctx)).toThrow('Unexpected token');
+    });
+
+    it('should return undefined for bracket access on null', () => {
+      const ctx2 = makeContext({ inputs: { val: null } });
+      expect(evaluateExpression('inputs.val[0]', ctx2)).toBeUndefined();
+    });
+
+    it('should return undefined for bracket access on undefined', () => {
+      const ctx2 = makeContext({ inputs: {} });
+      expect(evaluateExpression('inputs.missing[0]', ctx2)).toBeUndefined();
+    });
+
+    it('should return undefined for dot access on non-object', () => {
+      const ctx2 = makeContext({ inputs: { num: 42 } });
+      expect(evaluateExpression('inputs.num.prop', ctx2)).toBeUndefined();
+    });
   });
 
   describe('parentheses', () => {
@@ -523,6 +542,50 @@ describe('evaluateExpression', () => {
     it('supports negative-like expression in index', () => {
       const ctx = { ...emptyContext, inputs: { items: ['a', 'b', 'c'] } };
       expect(evaluateExpression('inputs.items[2 - 1]', ctx)).toBe('b');
+    });
+  });
+
+  describe('string escape sequences in tokenizer', () => {
+    it('should handle \\n escape in single-quoted string', () => {
+      const ctx = makeContext();
+      expect(evaluateExpression("'hello\\nworld'", ctx)).toBe('hello\nworld');
+    });
+
+    it('should handle \\t escape in double-quoted string', () => {
+      const ctx = makeContext();
+      expect(evaluateExpression('"col1\\tcol2"', ctx)).toBe('col1\tcol2');
+    });
+
+    it('should handle \\\\ escape in string', () => {
+      const ctx = makeContext();
+      expect(evaluateExpression("'back\\\\slash'", ctx)).toBe('back\\slash');
+    });
+
+    it('should handle escaped quote in string', () => {
+      const ctx = makeContext();
+      expect(evaluateExpression("'it\\'s'", ctx)).toBe("it's");
+    });
+  });
+
+  describe('built-in function error paths', () => {
+    it('contains() should throw when first argument is not string or array', () => {
+      const ctx = makeContext({ inputs: { num: 42 } });
+      expect(() => evaluateExpression('contains(inputs.num, 4)', ctx)).toThrow('contains()');
+    });
+
+    it('startsWith() should throw when given non-string arguments', () => {
+      const ctx = makeContext({ inputs: { num: 42 } });
+      expect(() => evaluateExpression('startsWith(inputs.num, 4)', ctx)).toThrow('startsWith()');
+    });
+
+    it('endsWith() should throw when given non-string arguments', () => {
+      const ctx = makeContext({ inputs: { num: 42 } });
+      expect(() => evaluateExpression('endsWith(inputs.num, 2)', ctx)).toThrow('endsWith()');
+    });
+
+    it('join() should throw when first argument is not an array', () => {
+      const ctx = makeContext({ inputs: { str: 'hello' } });
+      expect(() => evaluateExpression("join(inputs.str, ',')", ctx)).toThrow('join()');
     });
   });
 });

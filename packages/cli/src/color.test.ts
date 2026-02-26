@@ -133,4 +133,52 @@ describe('detectColorMode', () => {
     process.env['NO_COLOR'] = '';
     expect(detectColorMode()).toBe('always');
   });
+
+  it('returns auto when OWS_COLOR is an unknown value', () => {
+    process.env['OWS_COLOR'] = 'foobar';
+    expect(detectColorMode()).toBe('auto');
+  });
+
+  it('returns always when OWS_COLOR is 1', () => {
+    process.env['OWS_COLOR'] = '1';
+    expect(detectColorMode()).toBe('always');
+  });
+
+  it('returns always when OWS_COLOR is true', () => {
+    process.env['OWS_COLOR'] = 'true';
+    expect(detectColorMode()).toBe('always');
+  });
+
+  it('returns never when OWS_COLOR is 0', () => {
+    process.env['OWS_COLOR'] = '0';
+    expect(detectColorMode()).toBe('never');
+  });
+
+  it('returns never when OWS_COLOR is false', () => {
+    process.env['OWS_COLOR'] = 'false';
+    expect(detectColorMode()).toBe('never');
+  });
+
+  it('returns based on stdout.isTTY when no env vars are set', () => {
+    const origIsTTY = process.stdout.isTTY;
+    try {
+      Object.defineProperty(process.stdout, 'isTTY', { value: true, writable: true, configurable: true });
+      expect(detectColorMode()).toBe('always');
+
+      Object.defineProperty(process.stdout, 'isTTY', { value: false, writable: true, configurable: true });
+      expect(detectColorMode()).toBe('never');
+    } finally {
+      Object.defineProperty(process.stdout, 'isTTY', { value: origIsTTY, writable: true, configurable: true });
+    }
+  });
+
+  it('returns never when stdout.isTTY is not a boolean', () => {
+    const origIsTTY = process.stdout.isTTY;
+    try {
+      Object.defineProperty(process.stdout, 'isTTY', { value: undefined, writable: true, configurable: true });
+      expect(detectColorMode()).toBe('never');
+    } finally {
+      Object.defineProperty(process.stdout, 'isTTY', { value: origIsTTY, writable: true, configurable: true });
+    }
+  });
 });

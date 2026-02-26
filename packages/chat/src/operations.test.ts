@@ -291,3 +291,50 @@ describe('dm operations', () => {
     });
   });
 });
+
+// ---------------------------------------------------------------------------
+// Coverage: toWorkspaceError non-WorkspaceError fallback & findSpace error path
+// ---------------------------------------------------------------------------
+
+describe('spaces toWorkspaceError fallback (line 37)', () => {
+  let http: HttpClient;
+  beforeEach(() => { http = createMockHttp(); });
+
+  it('should wrap a non-WorkspaceError into WorkspaceError', async () => {
+    // Return a plain Error (not a NetworkError/WorkspaceError) to hit the fallback branch
+    vi.mocked(http.get).mockResolvedValueOnce(err(new Error('raw error') as unknown as NetworkError));
+    const result = await listSpaces(http);
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.error.message).toBe('raw error');
+    }
+  });
+});
+
+describe('findSpace error path (lines 165-166)', () => {
+  let http: HttpClient;
+  beforeEach(() => { http = createMockHttp(); });
+
+  it('should propagate error when listSpaces fails inside findSpace', async () => {
+    vi.mocked(http.get).mockResolvedValueOnce(mockErr('list failed', 500));
+    const result = await findSpace(http, 'Team');
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.error.message).toBe('list failed');
+    }
+  });
+});
+
+describe('messages toWorkspaceError fallback (line 37)', () => {
+  let http: HttpClient;
+  beforeEach(() => { http = createMockHttp(); });
+
+  it('should wrap a non-WorkspaceError into WorkspaceError for listMessages', async () => {
+    vi.mocked(http.get).mockResolvedValueOnce(err(new Error('raw msg error') as unknown as NetworkError));
+    const result = await listMessages(http, 'spaces/AAA');
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.error.message).toBe('raw msg error');
+    }
+  });
+});

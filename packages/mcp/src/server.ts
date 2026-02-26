@@ -164,16 +164,12 @@ function errorResponse(
   id: string | number | null,
   code: number,
   message: string,
-  data?: unknown,
 ): JsonRpcResponse {
   const response: JsonRpcResponse = {
     jsonrpc: '2.0',
     id,
     error: { code, message },
   };
-  if (data !== undefined) {
-    response.error!.data = data;
-  }
   return response;
 }
 

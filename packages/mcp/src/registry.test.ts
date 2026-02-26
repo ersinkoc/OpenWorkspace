@@ -270,6 +270,53 @@ describe('registry', () => {
         expect(handler).toHaveBeenCalledWith({ withDefault: 'default_value' });
       });
 
+      it('should validate required parameter passed as null', async () => {
+        const registry = createToolRegistry();
+        registry.register({
+          name: 'test-tool',
+          description: 'A test tool',
+          parameters: {
+            required: { type: 'string', description: 'Required param', required: true },
+          },
+          handler: vi.fn(),
+        });
+        const result = await registry.invoke('test-tool', { required: null });
+        expect(result.ok).toBe(false);
+        if (!result.ok) {
+          expect(result.error.message).toContain("Parameter 'required' is required");
+        }
+      });
+
+      it('should skip validation for optional parameter with null value', async () => {
+        const registry = createToolRegistry();
+        const handler = vi.fn().mockResolvedValue('ok');
+        registry.register({
+          name: 'test-tool',
+          description: 'A test tool',
+          parameters: {
+            optional: { type: 'string', description: 'Optional param' },
+          },
+          handler,
+        });
+        const result = await registry.invoke('test-tool', { optional: null });
+        expect(result.ok).toBe(true);
+      });
+
+      it('should skip validation for optional parameter with undefined value', async () => {
+        const registry = createToolRegistry();
+        const handler = vi.fn().mockResolvedValue('ok');
+        registry.register({
+          name: 'test-tool',
+          description: 'A test tool',
+          parameters: {
+            optional: { type: 'string', description: 'Optional param' },
+          },
+          handler,
+        });
+        const result = await registry.invoke('test-tool', { optional: undefined });
+        expect(result.ok).toBe(true);
+      });
+
       it('should validate enum values', async () => {
         const registry = createToolRegistry();
         registry.register({

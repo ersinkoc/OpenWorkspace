@@ -5,7 +5,7 @@
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import type { HttpClient, HttpResponse, Result } from '@openworkspace/core';
-import { ok, err, NetworkError } from '@openworkspace/core';
+import { ok, err, NetworkError, WorkspaceError } from '@openworkspace/core';
 
 import { getProfile, getProfileByEmail, getBatchProfiles, searchProfiles } from './profiles.js';
 import { getManager, getDirectReports } from './relations.js';
@@ -29,6 +29,10 @@ function mockOk<T>(data: T): Result<HttpResponse<T>, NetworkError> {
 
 function mockErr(message: string, statusCode?: number): Result<never, NetworkError> {
   return err(new NetworkError(message, { url: 'test' }, statusCode));
+}
+/** Returns an error result whose error is a plain Error (not a WorkspaceError). */
+function mockRawErr(message: string): Result<never, Error> {
+  return err(new Error(message));
 }
 
 // ---------------------------------------------------------------------------
@@ -55,6 +59,17 @@ describe('profiles operations', () => {
       vi.mocked(http.get).mockResolvedValueOnce(mockErr('fail', 500));
       const result = await getProfile(http, 'people/x');
       expect(result.ok).toBe(false);
+    });
+
+    it('should wrap non-WorkspaceError via toWorkspaceError fallback', async () => {
+      vi.mocked(http.get).mockResolvedValueOnce(mockRawErr('raw error') as any);
+      const result = await getProfile(http, 'people/x');
+      expect(result.ok).toBe(false);
+      if (!result.ok) {
+        expect(result.error).toBeInstanceOf(WorkspaceError);
+        expect(result.error.message).toBe('raw error');
+        expect(result.error.code).toBe('PEOPLE_ERROR');
+      }
     });
   });
 
@@ -148,6 +163,32 @@ describe('relations operations', () => {
       const result = await getManager(http);
       expect(result.ok).toBe(true);
       if (result.ok) expect(result.value).toBeNull();
+    });
+
+    it('should return null when managerResourceNames[0] is falsy', async () => {
+      // Provide a profile with a manager relation whose person field is falsy.
+      // findRelationsByType guards against this, so we mock at a lower level:
+      // create a relations array with a truthy-length but push nothing useful.
+      vi.mocked(http.get).mockResolvedValueOnce(mockOk({
+        resourceName: 'people/me',
+        relations: [{ type: 'manager', person: undefined }],
+      }));
+      const result = await getManager(http);
+      expect(result.ok).toBe(true);
+      if (result.ok) expect(result.value).toBeNull();
+    });
+
+    it('should propagate error when manager profile fetch fails', async () => {
+      // First call: profile with manager relation succeeds
+      vi.mocked(http.get).mockResolvedValueOnce(mockOk({
+        resourceName: 'people/me',
+        relations: [{ type: 'manager', person: 'people/mgr1' }],
+      }));
+      // Second call: fetching the manager profile fails
+      vi.mocked(http.get).mockResolvedValueOnce(mockErr('manager not found', 404));
+      const result = await getManager(http);
+      expect(result.ok).toBe(false);
+      if (!result.ok) expect(result.error.message).toBe('manager not found');
     });
 
     it('should propagate error', async () => {

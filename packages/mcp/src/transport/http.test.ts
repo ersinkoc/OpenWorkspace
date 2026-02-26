@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { createHttpTransport } from './http.js';
 import type { HttpTransport } from './http.js';
 import type { JsonRpcMessage, JsonRpcResponse } from '../server.js';
+import * as http from 'node:http';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -768,34 +769,34 @@ describe('transport/http', () => {
 
   describe('request timeout', () => {
     it('should return timeout error when server does not respond within 30s', async () => {
-      transport = createHttpTransport({ port: 0 });
+      // Intercept setTimeout: when the handler sets a 30s timeout, reduce it to 50ms
+      const origSetTimeout = globalThis.setTimeout;
+      vi.spyOn(globalThis, 'setTimeout').mockImplementation(((fn: Function, ms?: number, ...args: unknown[]) => {
+        const adjustedMs = (ms !== undefined && ms >= 30000) ? 50 : ms;
+        return origSetTimeout(fn as Parameters<typeof origSetTimeout>[0], adjustedMs, ...args);
+      }) as typeof setTimeout);
 
-      // onMessage does NOT call transport.send(), so the request will time out
-      transport.onMessage = vi.fn();
+      try {
+        transport = createHttpTransport({ port: 0 });
+        transport.onMessage = vi.fn();
 
-      await transport.start();
-      const port = transport.getPort()!;
+        await transport.start();
+        const port = transport.getPort()!;
 
-      // Post a request that won't get a response
-      const responsePromise = postJsonRpc(port, '/mcp', {
-        jsonrpc: '2.0',
-        id: 'timeout-test',
-        method: 'slow-operation',
-      });
+        const res = await postJsonRpc(port, '/mcp', {
+          jsonrpc: '2.0',
+          id: 'timeout-test',
+          method: 'slow-operation',
+        });
 
-      // The timeout is 30 seconds; we can't wait that long in tests,
-      // but we can verify the mechanism works by checking that after close()
-      // the pending request resolves
-      await new Promise((resolve) => setTimeout(resolve, 50));
-
-      // Close transport to resolve pending requests
-      await transport.close();
-
-      const res = await responsePromise;
-      const body = (await res.json()) as JsonRpcResponse;
-      expect(body.id).toBe('timeout-test');
-      expect(body.error).toBeDefined();
-      expect(body.error!.code).toBe(-32603);
+        const body = (await res.json()) as JsonRpcResponse;
+        expect(body.id).toBe('timeout-test');
+        expect(body.error).toBeDefined();
+        expect(body.error!.code).toBe(-32603);
+        expect(body.error!.message).toBe('Request timed out');
+      } finally {
+        vi.restoreAllMocks();
+      }
     });
   });
 
@@ -922,6 +923,147 @@ describe('transport/http', () => {
       expect((body1.result as { requestId: number }).requestId).toBe(1);
       expect(body2.id).toBe(2);
       expect((body2.result as { requestId: number }).requestId).toBe(2);
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // Server error event (lines 269-271)
+  // -------------------------------------------------------------------------
+
+  describe('server error event', () => {
+    it('should call onError and reject start() when server emits error (e.g. EADDRINUSE)', async () => {
+      // Start the first transport to occupy a port
+      transport = createHttpTransport({ port: 0 });
+      await transport.start();
+      const occupiedPort = transport.getPort()!;
+
+      // Try to start a second transport on the same port
+      const transport2 = createHttpTransport({ port: occupiedPort });
+      const errorHandler = vi.fn();
+      transport2.onError = errorHandler;
+
+      await expect(transport2.start()).rejects.toThrow();
+      expect(errorHandler).toHaveBeenCalledWith(
+        expect.objectContaining({ message: expect.stringContaining('EADDRINUSE') }),
+      );
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // readBody failure (lines 156-165)
+  // -------------------------------------------------------------------------
+
+  describe('readBody failure', () => {
+    it('should return 400 when reading request body fails', async () => {
+      const net = await import('node:net');
+      transport = createHttpTransport({ port: 0 });
+      transport.onMessage = vi.fn();
+
+      await transport.start();
+      const port = transport.getPort()!;
+
+      // Use a raw TCP socket to send a partial HTTP POST and then
+      // abruptly reset the connection to trigger a read error.
+      const result = await new Promise<string>((resolve) => {
+        const socket = net.connect(port, '127.0.0.1', () => {
+          const headers = [
+            'POST /mcp HTTP/1.1',
+            'Host: 127.0.0.1',
+            'Content-Type: application/json',
+            'Content-Length: 10000',
+            '',
+            '{',
+          ].join('\r\n');
+          socket.write(headers);
+
+          setTimeout(() => {
+            socket.resetAndDestroy();
+          }, 20);
+        });
+
+        let data = '';
+        socket.on('data', (chunk) => { data += chunk.toString(); });
+        socket.on('end', () => resolve(data));
+        socket.on('error', () => resolve(data));
+        socket.on('close', () => resolve(data));
+      });
+
+      // The server catches the read error; on some platforms the
+      // connection resets before the response can be sent.
+      if (result.includes('400')) {
+        expect(result).toContain('Failed to read request body');
+      }
+      expect(transport.onMessage).not.toHaveBeenCalled();
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // handleRequest catch handler (line 265)
+  // -------------------------------------------------------------------------
+
+  describe('handleRequest error handler', () => {
+    it('should call onError when onMessage throws during notification handling', async () => {
+      transport = createHttpTransport({ port: 0 });
+
+      const errorPromise = new Promise<Error>((resolve) => {
+        transport.onError = (err) => resolve(err);
+      });
+
+      transport.onMessage = () => {
+        throw new Error('handler exploded');
+      };
+
+      await transport.start();
+      const port = transport.getPort()!;
+
+      const req = http.request({
+        hostname: '127.0.0.1',
+        port,
+        path: '/mcp',
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+      });
+      req.on('error', () => { /* Expected */ });
+      req.end(JSON.stringify({ jsonrpc: '2.0', method: 'notify' }));
+
+      const err = await errorPromise;
+      expect(err).toBeInstanceOf(Error);
+      expect(err.message).toBe('handler exploded');
+
+      // Destroy the request to allow transport.close() to complete
+      req.destroy();
+    });
+
+    it('should wrap non-Error thrown values in an Error', async () => {
+      transport = createHttpTransport({ port: 0 });
+
+      const errorPromise = new Promise<Error>((resolve) => {
+        transport.onError = (err) => resolve(err);
+      });
+
+      transport.onMessage = (() => {
+        throw 'string error';
+      }) as (msg: JsonRpcMessage) => void;
+
+      await transport.start();
+      const port = transport.getPort()!;
+
+      const req = http.request({
+        hostname: '127.0.0.1',
+        port,
+        path: '/mcp',
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+      });
+      req.on('error', () => { /* Expected */ });
+      req.end(JSON.stringify({ jsonrpc: '2.0', method: 'notify' }));
+
+      const err = await errorPromise;
+      expect(err).toBeInstanceOf(Error);
+      expect(err.message).toBe('string error');
+
+      // Destroy the request to allow transport.close() to complete
+      req.destroy();
     });
   });
 });

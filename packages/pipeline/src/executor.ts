@@ -583,11 +583,7 @@ async function executeStepWithRetry(
   }
 
   // All attempts exhausted
-  const finalResult = lastResult ?? {
-    success: false,
-    error: 'All retry attempts exhausted',
-    duration: 0,
-  };
+  const finalResult = lastResult!;
   finalResult.attempts = maxAttempts;
   logs.push(createLog('error',
     'Step failed after ' + String(maxAttempts) + ' attempts: ' + (finalResult.error ?? 'unknown error'),

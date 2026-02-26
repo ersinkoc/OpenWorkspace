@@ -36,6 +36,7 @@ const {
   mockPeopleApi,
   mockGroupsApi,
   mockKeepApi,
+  mockParseArgs,
 } = vi.hoisted(() => {
   const mockListAccounts = vi.fn();
   const mockGetToken = vi.fn();
@@ -130,6 +131,7 @@ const {
     listNotes: vi.fn(),
     getNote: vi.fn(),
   };
+  const mockParseArgs = vi.fn();
 
   return {
     mockListAccounts,
@@ -165,6 +167,7 @@ const {
     mockPeopleApi,
     mockGroupsApi,
     mockKeepApi,
+    mockParseArgs,
   };
 });
 
@@ -309,6 +312,19 @@ vi.mock('@openworkspace/keep', () => ({
   keep: vi.fn(() => mockKeepApi),
 }));
 
+vi.mock('./parser.js', async () => {
+  const actual = await vi.importActual<typeof import('./parser.js')>('./parser.js');
+  return {
+    ...actual,
+    parseArgs: (...args: unknown[]) => {
+      if (mockParseArgs.getMockImplementation()) {
+        return mockParseArgs(...args);
+      }
+      return actual.parseArgs(...(args as Parameters<typeof actual.parseArgs>));
+    },
+  };
+});
+
 // ── Imports (after mocks are set up) ───────────────────────────────
 
 import { main, getAuthenticatedClient, createSubcommandDispatcher } from './cli.js';
@@ -443,6 +459,25 @@ describe('cli', () => {
       }
       expect(mockListAccounts).not.toHaveBeenCalled();
     });
+
+    it('should attach a request interceptor that adds the Authorization header', async () => {
+      setupAuthSuccess();
+      const result = await getAuthenticatedClient();
+      expect(result.ok).toBe(true);
+      // The interceptor was pushed to mockHttpInterceptors.request
+      expect(mockHttpInterceptors.request.length).toBe(1);
+      const interceptor = mockHttpInterceptors.request[0] as (url: string, config: Record<string, unknown>) => unknown;
+      const output = interceptor('https://example.com', { headers: { 'X-Custom': 'yes' } });
+      expect(output).toEqual({
+        url: 'https://example.com',
+        config: {
+          headers: {
+            'X-Custom': 'yes',
+            Authorization: 'Bearer mock-access-token',
+          },
+        },
+      });
+    });
   });
 
   // ── createSubcommandDispatcher ──────────────────────────────────
@@ -475,6 +510,22 @@ describe('cli', () => {
       ]);
       const code = await dispatcher({ _: [], flags: {}, raw: [] });
       expect(code).toBe(1);
+    });
+  });
+
+  // ── parseArgs error path ────────────────────────────────────
+
+  describe('parseArgs error handling', () => {
+    it('should return 1 and print error when parseArgs fails', async () => {
+      mockParseArgs.mockImplementation(() => ({
+        ok: false,
+        error: { message: 'Unknown option --bad' },
+      }));
+      setArgs('--bad');
+      const code = await main();
+      expect(code).toBe(1);
+      expect(errorSpy).toHaveBeenCalledWith('Error: Unknown option --bad');
+      mockParseArgs.mockImplementation(undefined as never);
     });
   });
 
@@ -745,6 +796,16 @@ describe('cli', () => {
       const code = await main();
       expect(code).toBe(0);
       expect(logSpy).toHaveBeenCalledWith(expect.stringContaining('No authorized accounts'));
+    });
+
+    it('should show empty JSON when no accounts and --json', async () => {
+      setupAuthSuccess();
+      mockListAccounts.mockResolvedValue({ ok: true, value: [] });
+
+      setArgs('auth', 'list', '--json');
+      const code = await main();
+      expect(code).toBe(0);
+      expect(logSpy).toHaveBeenCalledWith(JSON.stringify({ accounts: [] }));
     });
 
     it('should error when listAccounts fails', async () => {

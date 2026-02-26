@@ -774,6 +774,35 @@ describe('SlidesApi facade', () => {
       expect(result.value).toBeInstanceOf(Blob);
     }
   });
+
+  it('delegates updateSpeakerNotes through the facade', async () => {
+    const presentationWithNotes = {
+      ...PRESENTATION_FIXTURE,
+      slides: [
+        {
+          ...SLIDE_FIXTURE,
+          slideProperties: {
+            notesPage: {
+              objectId: 'notes-1',
+              notesProperties: {
+                speakerNotesObjectId: 'notes-shape-1',
+              },
+            },
+          },
+        },
+      ],
+    };
+    http._getHandler.mockResolvedValueOnce(mockResponse(presentationWithNotes));
+    http._postHandler.mockResolvedValueOnce(mockResponse({
+      presentationId: 'pres-1',
+      replies: [],
+    }));
+
+    const api = slides(http);
+    const result = await api.updateSpeakerNotes('pres-1', 'slide-1', 'New notes');
+
+    expect(result.ok).toBe(true);
+  });
 });
 
 // ---------------------------------------------------------------------------

@@ -5,7 +5,7 @@
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import type { HttpClient, HttpResponse, Result } from '@openworkspace/core';
-import { ok, err, NetworkError } from '@openworkspace/core';
+import { ok, err, NetworkError, WorkspaceError } from '@openworkspace/core';
 
 import { getForm, createForm, batchUpdateForm, addQuestion, deleteItem } from './form-ops.js';
 import { listResponses, getResponse } from './responses.js';
@@ -30,6 +30,10 @@ function mockOk<T>(data: T): Result<HttpResponse<T>, NetworkError> {
 function mockErr(message: string, statusCode?: number): Result<never, NetworkError> {
   return err(new NetworkError(message, { url: 'test' }, statusCode));
 }
+/** Returns an error result whose error is a plain Error (not a WorkspaceError). */
+function mockRawErr(message: string): Result<never, Error> {
+  return err(new Error(message));
+}
 
 // ---------------------------------------------------------------------------
 // form-ops.ts
@@ -52,6 +56,17 @@ describe('form-ops operations', () => {
       vi.mocked(http.get).mockResolvedValueOnce(mockErr('fail', 404));
       const result = await getForm(http, 'x');
       expect(result.ok).toBe(false);
+    });
+
+    it('should wrap non-WorkspaceError via toWorkspaceError fallback', async () => {
+      vi.mocked(http.get).mockResolvedValueOnce(mockRawErr('raw error') as any);
+      const result = await getForm(http, 'x');
+      expect(result.ok).toBe(false);
+      if (!result.ok) {
+        expect(result.error).toBeInstanceOf(WorkspaceError);
+        expect(result.error.message).toBe('raw error');
+        expect(result.error.code).toBe('FORMS_ERROR');
+      }
     });
   });
 
@@ -116,6 +131,17 @@ describe('form-ops operations', () => {
       expect(result.ok).toBe(false);
     });
   });
+
+  describe('toWorkspaceError fallback (form-ops)', () => {
+    it('should wrap a plain Error through getForm', async () => {
+      vi.mocked(http.get).mockResolvedValueOnce(err(new Error('plain error') as never));
+      const result = await getForm(http, 'x');
+      expect(result.ok).toBe(false);
+      if (!result.ok) {
+        expect(result.error.message).toContain('plain error');
+      }
+    });
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -139,6 +165,17 @@ describe('responses operations', () => {
       const result = await listResponses(http, 'x');
       expect(result.ok).toBe(false);
     });
+
+    it('should wrap non-WorkspaceError via toWorkspaceError fallback', async () => {
+      vi.mocked(http.get).mockResolvedValueOnce(mockRawErr('raw error') as any);
+      const result = await listResponses(http, 'x');
+      expect(result.ok).toBe(false);
+      if (!result.ok) {
+        expect(result.error).toBeInstanceOf(WorkspaceError);
+        expect(result.error.message).toBe('raw error');
+        expect(result.error.code).toBe('FORMS_ERROR');
+      }
+    });
   });
 
   describe('getResponse', () => {
@@ -153,6 +190,17 @@ describe('responses operations', () => {
       vi.mocked(http.get).mockResolvedValueOnce(mockErr('fail', 404));
       const result = await getResponse(http, 'x', 'y');
       expect(result.ok).toBe(false);
+    });
+  });
+
+  describe('toWorkspaceError fallback (responses)', () => {
+    it('should wrap a plain Error through getResponse', async () => {
+      vi.mocked(http.get).mockResolvedValueOnce(err(new Error('plain error') as never));
+      const result = await getResponse(http, 'x', 'y');
+      expect(result.ok).toBe(false);
+      if (!result.ok) {
+        expect(result.error.message).toContain('plain error');
+      }
     });
   });
 });

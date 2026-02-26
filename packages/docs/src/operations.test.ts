@@ -54,6 +54,13 @@ describe('documents operations', () => {
       const result = await getDocument(http, 'x');
       expect(result.ok).toBe(false);
     });
+
+    it('should wrap non-WorkspaceError via toWorkspaceError fallback', async () => {
+      vi.mocked(http.get).mockResolvedValueOnce(err(new Error('raw') as unknown as NetworkError));
+      const result = await getDocument(http, 'x');
+      expect(result.ok).toBe(false);
+      if (!result.ok) expect(result.error.message).toBe('raw');
+    });
   });
 
   describe('createDocument', () => {
@@ -151,6 +158,13 @@ describe('content operations', () => {
       const result = await batchUpdate(http, 'x', []);
       expect(result.ok).toBe(false);
     });
+
+    it('should wrap non-WorkspaceError via toWorkspaceError fallback', async () => {
+      vi.mocked(http.post).mockResolvedValueOnce(err(new Error('raw') as unknown as NetworkError));
+      const result = await batchUpdate(http, 'x', []);
+      expect(result.ok).toBe(false);
+      if (!result.ok) expect(result.error.message).toBe('raw');
+    });
   });
 
   describe('insertText', () => {
@@ -201,6 +215,13 @@ describe('export operations', () => {
       vi.mocked(http.get).mockResolvedValueOnce(mockErr('fail', 500));
       const result = await exportDocument(http, 'x', 'application/pdf');
       expect(result.ok).toBe(false);
+    });
+
+    it('should wrap non-WorkspaceError via toWorkspaceError fallback', async () => {
+      vi.mocked(http.get).mockResolvedValueOnce(err(new Error('raw') as unknown as NetworkError));
+      const result = await exportDocument(http, 'x', 'application/pdf');
+      expect(result.ok).toBe(false);
+      if (!result.ok) expect(result.error.message).toBe('raw');
     });
   });
 });

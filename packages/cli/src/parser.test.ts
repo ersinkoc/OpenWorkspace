@@ -121,6 +121,49 @@ describe('parser', () => {
         expect(result.value.flags.tag).toEqual(['a', 'b']);
       }
     });
+
+    it('should treat short non-boolean last char as true when no next arg', () => {
+      // -x where x is NOT boolean and there is no next arg => flags.x = true
+      const result = parseArgs(['-x']);
+      expect(result.ok).toBe(true);
+      if (result.ok) {
+        expect(result.value.flags.x).toBe(true);
+      }
+    });
+
+    it('should treat short non-boolean last char as true when next arg starts with dash', () => {
+      // -x --other where x is NOT boolean => flags.x = true (no value consumed)
+      const result = parseArgs(['-x', '--other'], { boolean: ['other'] });
+      expect(result.ok).toBe(true);
+      if (result.ok) {
+        expect(result.value.flags.x).toBe(true);
+        expect(result.value.flags.other).toBe(true);
+      }
+    });
+
+    it('should treat short non-boolean middle chars as true in combined short options', () => {
+      // -abc where only c is NOT boolean => a and b set to true (middle non-boolean), c gets value
+      // but actually for this to hit line 147, we need a middle char that is NOT boolean
+      const result = parseArgs(['-xy', 'val']);
+      expect(result.ok).toBe(true);
+      if (result.ok) {
+        // x is middle char, NOT in boolean list, so it becomes true (line 147)
+        expect(result.value.flags.x).toBe(true);
+        // y is last char, NOT boolean, nextArg is 'val' so it gets the value
+        expect(result.value.flags.y).toBe('val');
+      }
+    });
+
+    it('should convert string flag to array when same array flag is provided twice with default', () => {
+      // First pass sets flags.tag = 'initial' (from default), second --tag sets it as array
+      const result = parseArgs(['--tag', 'a', '--tag', 'b'], { array: ['tag'], default: { tag: 'initial' } });
+      expect(result.ok).toBe(true);
+      if (result.ok) {
+        // default 'initial' is overwritten: first --tag a: existing is string 'initial' -> ['initial', 'a']
+        // then --tag b: existing is array ['initial', 'a'] -> ['initial', 'a', 'b']
+        expect(result.value.flags.tag).toEqual(['initial', 'a', 'b']);
+      }
+    });
   });
 
   describe('getStringFlag', () => {

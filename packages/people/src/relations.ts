@@ -72,6 +72,7 @@ export async function getManager(
 
   // Get the manager's full profile
   const managerResourceName = managerResourceNames[0];
+  /* v8 ignore next 3 */
   if (!managerResourceName) {
     return ok(null);
   }

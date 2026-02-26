@@ -5,7 +5,7 @@
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import type { HttpClient, HttpResponse, Result } from '@openworkspace/core';
-import { ok, err, NetworkError } from '@openworkspace/core';
+import { ok, err, NetworkError, WorkspaceError } from '@openworkspace/core';
 
 import { listNotes, getNote, createNote, createListNote, deleteNote, searchNotes } from './notes.js';
 import { getAttachment, downloadAttachment } from './attachments.js';
@@ -30,6 +30,10 @@ function mockOk<T>(data: T): Result<HttpResponse<T>, NetworkError> {
 function mockErr(message: string, statusCode?: number): Result<never, NetworkError> {
   return err(new NetworkError(message, { url: 'test' }, statusCode));
 }
+/** Returns an error result whose error is a plain Error (not a WorkspaceError). */
+function mockRawErr(message: string): Result<never, Error> {
+  return err(new Error(message));
+}
 
 // ---------------------------------------------------------------------------
 // notes.ts
@@ -51,6 +55,17 @@ describe('notes operations', () => {
       vi.mocked(http.get).mockResolvedValueOnce(mockErr('fail', 500));
       const result = await listNotes(http);
       expect(result.ok).toBe(false);
+    });
+
+    it('should wrap non-WorkspaceError via toWorkspaceError fallback', async () => {
+      vi.mocked(http.get).mockResolvedValueOnce(mockRawErr('raw error') as any);
+      const result = await listNotes(http);
+      expect(result.ok).toBe(false);
+      if (!result.ok) {
+        expect(result.error).toBeInstanceOf(WorkspaceError);
+        expect(result.error.message).toBe('raw error');
+        expect(result.error.code).toBe('KEEP_ERROR');
+      }
     });
   });
 
@@ -158,6 +173,17 @@ describe('attachments operations', () => {
       const result = await getAttachment(http, 'notes/x/attachments/y');
       expect(result.ok).toBe(false);
     });
+
+    it('should wrap non-WorkspaceError via toWorkspaceError fallback', async () => {
+      vi.mocked(http.get).mockResolvedValueOnce(mockRawErr('raw error') as any);
+      const result = await getAttachment(http, 'notes/x/attachments/y');
+      expect(result.ok).toBe(false);
+      if (!result.ok) {
+        expect(result.error).toBeInstanceOf(WorkspaceError);
+        expect(result.error.message).toBe('raw error');
+        expect(result.error.code).toBe('KEEP_ERROR');
+      }
+    });
   });
 
   describe('downloadAttachment', () => {
@@ -175,6 +201,26 @@ describe('attachments operations', () => {
       vi.mocked(http.get).mockResolvedValueOnce(mockErr('fail', 500));
       const result = await downloadAttachment(http, 'notes/x/attachments/y');
       expect(result.ok).toBe(false);
+    });
+
+    it('should wrap non-WorkspaceError in toWorkspaceError', async () => {
+      vi.mocked(http.get).mockResolvedValueOnce(err(new Error('plain error') as never));
+      const result = await downloadAttachment(http, 'notes/x/attachments/y');
+      expect(result.ok).toBe(false);
+      if (!result.ok) {
+        expect(result.error.message).toContain('plain error');
+      }
+    });
+  });
+
+  describe('toWorkspaceError fallback (notes)', () => {
+    it('should wrap a plain string error via notes operation', async () => {
+      vi.mocked(http.get).mockResolvedValueOnce(err('string error' as never));
+      const result = await getNote(http, 'notes/x');
+      expect(result.ok).toBe(false);
+      if (!result.ok) {
+        expect(result.error.message).toContain('string error');
+      }
     });
   });
 });

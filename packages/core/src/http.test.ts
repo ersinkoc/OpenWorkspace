@@ -354,6 +354,28 @@ describe('http', () => {
       });
     });
 
+    describe('request method', () => {
+      it('should make a request via the generic request method', async () => {
+        fetchMock.mockResolvedValueOnce({
+          ok: true,
+          status: 200,
+          statusText: 'OK',
+          headers: new Headers({ 'content-type': 'application/json' }),
+          json: vi.fn().mockResolvedValueOnce({ generic: true }),
+          text: vi.fn().mockResolvedValueOnce('{"generic":true}'),
+        });
+
+        const client = createHttpClient();
+        const result = await client.request('/test', { method: 'GET' });
+
+        expect(result.ok).toBe(true);
+        if (result.ok) {
+          expect(result.value.status).toBe(200);
+          expect(result.value.data).toEqual({ generic: true });
+        }
+      });
+    });
+
     describe('default headers', () => {
       it('should include default headers', async () => {
         fetchMock.mockResolvedValueOnce({

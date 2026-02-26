@@ -209,3 +209,73 @@ describe('other-contacts operations', () => {
     });
   });
 });
+
+// ---------------------------------------------------------------------------
+// Coverage: toWorkspaceError fallbacks, toQueryString array branch, plugin facade
+// ---------------------------------------------------------------------------
+
+describe('contacts toWorkspaceError fallback (line 48)', () => {
+  let http: HttpClient;
+  beforeEach(() => { http = createMockHttp(); });
+
+  it('should wrap a non-WorkspaceError into WorkspaceError', async () => {
+    vi.mocked(http.get).mockResolvedValueOnce(err(new Error('raw contacts error') as unknown as NetworkError));
+    const result = await listContacts(http);
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.error.message).toBe('raw contacts error');
+    }
+  });
+});
+
+describe('contacts toQueryString array branch (line 32)', () => {
+  let http: HttpClient;
+  beforeEach(() => { http = createMockHttp(); });
+
+  it('should join array values with commas in query string', async () => {
+    vi.mocked(http.get).mockResolvedValueOnce(mockOk({ connections: [] }));
+    await listContacts(http, { sources: ['READ_SOURCE_TYPE_CONTACT', 'READ_SOURCE_TYPE_PROFILE'] as unknown as undefined });
+    const url = vi.mocked(http.get).mock.calls[0]?.[0] as string;
+    expect(url).toContain('sources=READ_SOURCE_TYPE_CONTACT%2CREAD_SOURCE_TYPE_PROFILE');
+  });
+});
+
+describe('directory toWorkspaceError fallback (line 46)', () => {
+  let http: HttpClient;
+  beforeEach(() => { http = createMockHttp(); });
+
+  it('should wrap a non-WorkspaceError into WorkspaceError', async () => {
+    vi.mocked(http.get).mockResolvedValueOnce(err(new Error('raw dir error') as unknown as NetworkError));
+    const result = await listDirectoryPeople(http);
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.error.message).toBe('raw dir error');
+    }
+  });
+});
+
+describe('other-contacts toWorkspaceError fallback (line 45)', () => {
+  let http: HttpClient;
+  beforeEach(() => { http = createMockHttp(); });
+
+  it('should wrap a non-WorkspaceError into WorkspaceError', async () => {
+    vi.mocked(http.get).mockResolvedValueOnce(err(new Error('raw other error') as unknown as NetworkError));
+    const result = await listOtherContacts(http);
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.error.message).toBe('raw other error');
+    }
+  });
+});
+
+describe('other-contacts toQueryString array branch (line 29)', () => {
+  let http: HttpClient;
+  beforeEach(() => { http = createMockHttp(); });
+
+  it('should join array values with commas in query string', async () => {
+    vi.mocked(http.get).mockResolvedValueOnce(mockOk({ connections: [] }));
+    await listOtherContacts(http, { personFields: ['names', 'emailAddresses'] as unknown as string });
+    const url = vi.mocked(http.get).mock.calls[0]?.[0] as string;
+    expect(url).toContain('readMask=names%2CemailAddresses');
+  });
+});

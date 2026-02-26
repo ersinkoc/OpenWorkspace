@@ -92,6 +92,39 @@ describe('executor', () => {
         expect(result.value).toBe('Name: Jane');
       }
     });
+
+    it('should return error for deep path on non-object via legacy fallback', () => {
+      // Use a key with @ which makes the expression evaluator throw,
+      // falling back to legacyResolve. The deep path traversal hits
+      // a non-object value (string), covering the else branch.
+      const ctx = {
+        inputs: { 'user@email': 'john@example.com' },
+        outputs: {},
+        env: {},
+        vars: {},
+      };
+      const result = interpolate('Val: ${{ inputs.user@email.deep }}', ctx);
+      // legacyResolve returns undefined (non-object can't be traversed)
+      // so interpolate returns an error
+      expect(result.ok).toBe(false);
+    });
+
+    it('should resolve deep path on object via legacy fallback', () => {
+      // Use a key with @ which makes the expression evaluator throw,
+      // falling back to legacyResolve. The deep path traversal succeeds
+      // because the intermediate value is an object.
+      const ctx = {
+        inputs: { 'user@data': { name: 'John' } },
+        outputs: {},
+        env: {},
+        vars: {},
+      };
+      const result = interpolate('Name: ${{ inputs.user@data.name }}', ctx);
+      expect(result.ok).toBe(true);
+      if (result.ok) {
+        expect(result.value).toBe('Name: John');
+      }
+    });
   });
 
   describe('interpolateDeep', () => {
@@ -1358,6 +1391,127 @@ describe('executor', () => {
       const result = await executePipeline(pipeline, actions);
 
       expect(result.logs[0]!.message).toBe('Pipeline started');
+    });
+  });
+
+  describe('legacy interpolation fallback', () => {
+    it('should fall back to legacy resolve for keys with hyphens', () => {
+      const context = {
+        inputs: { 'my-key': 'legacy-value' },
+        outputs: {},
+        env: {},
+        vars: {},
+      };
+      // 'inputs.my-key' causes the expression evaluator to parse as inputs.my - key (subtraction)
+      // which fails, then legacy resolve handles it as a simple path lookup
+      const result = interpolate('${{ inputs.my-key }}', context);
+      expect(result.ok).toBe(true);
+      if (result.ok) {
+        expect(result.value).toBe('legacy-value');
+      }
+    });
+
+    it('should fall back to legacy resolve for outputs with hyphens', () => {
+      const context = {
+        inputs: {},
+        outputs: { 'my-result': 'output-value' },
+        env: {},
+        vars: {},
+      };
+      const result = interpolate('${{ outputs.my-result }}', context);
+      expect(result.ok).toBe(true);
+      if (result.ok) {
+        expect(result.value).toBe('output-value');
+      }
+    });
+
+    it('should fall back to legacy resolve for env with hyphens', () => {
+      const context = {
+        inputs: {},
+        outputs: {},
+        env: { 'MY-VAR': 'env-value' },
+        vars: {},
+      };
+      const result = interpolate('${{ env.MY-VAR }}', context);
+      expect(result.ok).toBe(true);
+      if (result.ok) {
+        expect(result.value).toBe('env-value');
+      }
+    });
+
+    it('should fall back to legacy resolve for vars with hyphens', () => {
+      const context = {
+        inputs: {},
+        outputs: {},
+        env: {},
+        vars: { 'my-var': 'var-value' },
+      };
+      const result = interpolate('${{ vars.my-var }}', context);
+      expect(result.ok).toBe(true);
+      if (result.ok) {
+        expect(result.value).toBe('var-value');
+      }
+    });
+
+    it('should resolve deep nested legacy paths', () => {
+      const context = {
+        inputs: { data: { nested: 'deep' } },
+        outputs: {},
+        env: {},
+        vars: {},
+      };
+      // This should work through legacy resolve since inputs.data.nested
+      // is a simple dotted path
+      const result = interpolate('${{ inputs.data.nested }}', context);
+      expect(result.ok).toBe(true);
+      if (result.ok) {
+        expect(result.value).toBe('deep');
+      }
+    });
+
+    it('should use legacy condition fallback with ${{ }} wrapper', async () => {
+      const actions = createBuiltinActions();
+      const pipeline = {
+        steps: [{
+          action: 'echo',
+          with: { message: 'ran' },
+          if: '${{ inputs.my-flag }}',
+        }],
+      };
+      const result = await executePipeline(pipeline, actions, { 'my-flag': true });
+      expect(result.success).toBe(true);
+      expect(result.steps[0]!.skipped).toBeUndefined();
+    });
+
+    it('should use legacy condition fallback with bare expression', async () => {
+      const actions = createBuiltinActions();
+      const pipeline = {
+        steps: [{
+          action: 'echo',
+          with: { message: 'ran' },
+          if: 'inputs.my-flag',
+        }],
+      };
+      const result = await executePipeline(pipeline, actions, { 'my-flag': true });
+      expect(result.success).toBe(true);
+      expect(result.steps[0]!.skipped).toBeUndefined();
+    });
+
+    it('should evaluate legacy condition fallback with falsy interpolation result', async () => {
+      const actions = createBuiltinActions();
+      const pipeline = {
+        steps: [{
+          action: 'echo',
+          with: { message: 'ran' },
+          if: '${{ inputs.my-flag }}',
+        }],
+      };
+      // my-flag is 'false' which should be falsy in legacy condition evaluation
+      const result = await executePipeline(pipeline, actions, { 'my-flag': 'false' });
+      expect(result.success).toBe(true);
+      // The expression evaluator would parse inputs.my - flag (subtraction),
+      // fall back to legacy which interpolates to 'false', which is falsy
+      expect(result.steps[0]!.skipped).toBe(true);
     });
   });
 });

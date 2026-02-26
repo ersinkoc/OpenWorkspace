@@ -110,6 +110,13 @@ describe('slide-ops operations', () => {
       const result = await batchUpdate(http, 'x', []);
       expect(result.ok).toBe(false);
     });
+
+    it('should wrap non-WorkspaceError via toWorkspaceError fallback', async () => {
+      vi.mocked(http.post).mockResolvedValueOnce(err(new Error('raw') as unknown as NetworkError));
+      const result = await batchUpdate(http, 'x', []);
+      expect(result.ok).toBe(false);
+      if (!result.ok) expect(result.error.message).toBe('raw');
+    });
   });
 
   describe('addSlide', () => {
@@ -255,6 +262,13 @@ describe('export operations', () => {
       vi.mocked(http.get).mockResolvedValueOnce(mockErr('fail', 500));
       const result = await exportPresentation(http, 'x', 'application/pdf');
       expect(result.ok).toBe(false);
+    });
+
+    it('should wrap non-WorkspaceError via toWorkspaceError fallback', async () => {
+      vi.mocked(http.get).mockResolvedValueOnce(err(new Error('raw') as unknown as NetworkError));
+      const result = await exportPresentation(http, 'x', 'application/pdf');
+      expect(result.ok).toBe(false);
+      if (!result.ok) expect(result.error.message).toBe('raw');
     });
   });
 });

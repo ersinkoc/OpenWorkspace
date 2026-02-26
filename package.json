@@ -25,12 +25,16 @@
     "test": "turbo run test",
     "test:coverage": "turbo run test:coverage",
     "typecheck": "turbo run typecheck",
-    "clean": "turbo run clean"
+    "clean": "turbo run clean",
+    "quickstart": "tsx scripts/quickstart.ts",
+    "smoke-test": "tsx scripts/smoke-test.ts",
+    "test:mcp": "tsx scripts/test-mcp.ts"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",
     "@vitest/coverage-v8": "^3.0.0",
     "tsup": "^8.3.6",
+    "tsx": "^4.19.0",
     "turbo": "^2.4.0",
     "typescript": "^5.7.3",
     "vitest": "^3.0.0"

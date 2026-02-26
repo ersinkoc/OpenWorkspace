@@ -661,3 +661,37 @@ describe('URL encoding', () => {
     expect(url).toContain('query=john%2Bdoe%40example.com');
   });
 });
+
+// ---------------------------------------------------------------------------
+// Coverage: updateContact facade wrapper (plugin.ts line 51)
+// ---------------------------------------------------------------------------
+
+describe('ContactsApi facade - updateContact', () => {
+  let http: MockHttpClient;
+
+  beforeEach(() => {
+    http = createMockHttp();
+  });
+
+  it('delegates updateContact through the facade', async () => {
+    const updatedPerson: Person = { ...PERSON_FIXTURE, names: [{ displayName: 'Jane Doe', givenName: 'Jane', familyName: 'Doe', metadata: { primary: true } }] };
+    http._patchHandler.mockResolvedValueOnce(mockResponse(updatedPerson));
+
+    const api = contacts(http);
+    const result = await api.updateContact(
+      'people/c1234567890',
+      { names: [{ givenName: 'Jane', familyName: 'Doe' }] },
+      'names',
+    );
+
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.value.resourceName).toBe('people/c1234567890');
+    }
+
+    expect(http._patchHandler).toHaveBeenCalledOnce();
+    const url = http._patchHandler.mock.calls[0]?.[0] as string;
+    expect(url).toContain(':updateContact');
+    expect(url).toContain('updatePersonFields=names');
+  });
+});

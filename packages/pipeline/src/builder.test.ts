@@ -329,6 +329,55 @@ describe('createPipelineBuilder', () => {
     });
   });
 
+  // ── lastStep throws ──────────────────────────────────────
+
+  describe('lastStep guard', () => {
+    it('should throw when calling timeout() before any step', () => {
+      expect(() => {
+        createPipelineBuilder().timeout(1000);
+      }).toThrow('No steps have been added to the pipeline');
+    });
+
+    it('should throw when calling continueOnError() before any step', () => {
+      expect(() => {
+        createPipelineBuilder().continueOnError();
+      }).toThrow('No steps have been added to the pipeline');
+    });
+  });
+
+  // ── Timeout + retry combined ────────────────────────────
+
+  describe('timeout with retry', () => {
+    it('should apply timeout to retried step', async () => {
+      let attempts = 0;
+      const result = await createPipelineBuilder()
+        .stepWithRetry('retried', () => {
+          attempts++;
+          if (attempts < 2) throw new Error('not yet');
+          return 'done';
+        }, { maxAttempts: 3, delayMs: 1 })
+        .timeout(5000)
+        .run();
+
+      expect(result.success).toBe(true);
+      expect(result.outputs['retried']).toBe('done');
+      expect(result.steps[0]?.attempts).toBe(2);
+    });
+
+    it('should fail retried step when timeout exceeded', async () => {
+      const result = await createPipelineBuilder()
+        .stepWithRetry('slow-retry', async () => {
+          await new Promise(r => setTimeout(r, 500));
+          return 'done';
+        }, { maxAttempts: 3, delayMs: 1 })
+        .timeout(10)
+        .run();
+
+      expect(result.success).toBe(false);
+      expect(result.steps[0]?.error).toContain('timed out');
+    });
+  });
+
   // ── Edge cases ─────────────────────────────────────────
 
   describe('edge cases', () => {

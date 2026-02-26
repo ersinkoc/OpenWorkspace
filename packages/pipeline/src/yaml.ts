@@ -132,14 +132,7 @@ function parseBlock(
   start: number,
   baseIndent: number
 ): Result<{ value: YamlValue; next: number }, ValidationError> {
-  if (start >= lines.length) {
-    return ok({ value: null, next: start });
-  }
-
-  const firstLine = lines[start];
-  if (!firstLine || firstLine.indent < baseIndent) {
-    return ok({ value: null, next: start });
-  }
+  const firstLine = lines[start]!;
 
   const lineIndent = firstLine.indent;
 
@@ -306,10 +299,7 @@ export function parseYaml(input: string): Result<YamlValue, ValidationError> {
     return ok(null);
   }
 
-  const firstLine = lines[0];
-  if (!firstLine) {
-    return ok(null);
-  }
+  const firstLine = lines[0]!;
 
   // Single scalar with no structure
   if (

@@ -229,6 +229,32 @@ describe('config-store', () => {
     }
   });
 
+  it('should return false when deleting nested path through non-object intermediate', async () => {
+    const config = await createConfigStore(tempDir);
+    // Set a string value, then try to delete a path through it
+    config.set('shallow', 'just-a-string');
+    // Deleting 'shallow.deep.key' should fail because 'shallow' is a string, not an object
+    expect(config.delete('shallow.deep.key')).toBe(false);
+  });
+
+  it('should return false when deleting nested path through null intermediate', async () => {
+    const config = await createConfigStore(tempDir);
+    config.set('nullable', null as unknown as string);
+    expect(config.delete('nullable.sub.key')).toBe(false);
+  });
+
+  it('should return false when deleting nested path through array intermediate', async () => {
+    const config = await createConfigStore(tempDir);
+    config.set('arr', [1, 2, 3] as unknown as string);
+    expect(config.delete('arr.sub.key')).toBe(false);
+  });
+
+  it('should return false when deleting with empty part in dotted path', async () => {
+    const config = await createConfigStore(tempDir);
+    // Path like '.key' has an empty first part
+    expect(config.delete('.key')).toBe(false);
+  });
+
   it('should apply OWS_CACHE=off environment variable override', async () => {
     const originalCache = process.env['OWS_CACHE'];
     process.env['OWS_CACHE'] = 'off';
@@ -243,5 +269,14 @@ describe('config-store', () => {
         delete process.env['OWS_CACHE'];
       }
     }
+  });
+
+  it('should delete nested values with object intermediates', async () => {
+    const config = await createConfigStore(tempDir);
+    // Set a known nested value, then delete it
+    config.set('cache.custom_key', 'custom_value');
+    expect(config.get('cache.custom_key')).toBe('custom_value');
+    expect(config.delete('cache.custom_key')).toBe(true);
+    expect(config.get('cache.custom_key')).toBeUndefined();
   });
 });

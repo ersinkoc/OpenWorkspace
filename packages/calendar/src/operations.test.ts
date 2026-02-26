@@ -259,3 +259,71 @@ describe('freebusy operations', () => {
     });
   });
 });
+
+// ---------------------------------------------------------------------------
+// Coverage: toWorkspaceError fallbacks & toQueryString with parameters
+// ---------------------------------------------------------------------------
+
+describe('calendars toWorkspaceError fallback (line 32)', () => {
+  let http: HttpClient;
+  beforeEach(() => { http = createMockHttp(); });
+
+  it('should wrap a non-WorkspaceError into WorkspaceError', async () => {
+    vi.mocked(http.get).mockResolvedValueOnce(err(new Error('raw cal error') as unknown as NetworkError));
+    const result = await listCalendars(http);
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.error.message).toBe('raw cal error');
+    }
+  });
+});
+
+describe('calendars toQueryString with parameters (lines 64-67)', () => {
+  let http: HttpClient;
+  beforeEach(() => { http = createMockHttp(); });
+
+  it('should include showDeleted, showHidden, and syncToken in query string', async () => {
+    vi.mocked(http.get).mockResolvedValueOnce(mockOk({ items: [] }));
+    await listCalendars(http, {
+      showDeleted: true,
+      showHidden: true,
+      syncToken: 'token123',
+      maxResults: 50,
+      pageToken: 'page2',
+    });
+    const url = vi.mocked(http.get).mock.calls[0]?.[0] as string;
+    expect(url).toContain('showDeleted=true');
+    expect(url).toContain('showHidden=true');
+    expect(url).toContain('syncToken=token123');
+    expect(url).toContain('maxResults=50');
+    expect(url).toContain('pageToken=page2');
+  });
+});
+
+describe('events toWorkspaceError fallback (line 47)', () => {
+  let http: HttpClient;
+  beforeEach(() => { http = createMockHttp(); });
+
+  it('should wrap a non-WorkspaceError into WorkspaceError', async () => {
+    vi.mocked(http.get).mockResolvedValueOnce(err(new Error('raw event error') as unknown as NetworkError));
+    const result = await listEvents(http, 'primary');
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.error.message).toBe('raw event error');
+    }
+  });
+});
+
+describe('freebusy toWorkspaceError fallback (line 31)', () => {
+  let http: HttpClient;
+  beforeEach(() => { http = createMockHttp(); });
+
+  it('should wrap a non-WorkspaceError into WorkspaceError', async () => {
+    vi.mocked(http.post).mockResolvedValueOnce(err(new Error('raw fb error') as unknown as NetworkError));
+    const result = await queryFreeBusy(http, { timeMin: '', timeMax: '', items: [] });
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.error.message).toBe('raw fb error');
+    }
+  });
+});
