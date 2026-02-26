@@ -16,18 +16,30 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/ersinkoc/openworkspace.git"
+    "url": "git+https://github.com/ersinkoc/openworkspace.git",
+    "directory": "packages/chat"
   },
   "homepage": "https://openworkspace.oxog.dev",
+  "bugs": {
+    "url": "https://github.com/ersinkoc/openworkspace/issues"
+  },
   "type": "module",
+  "main": "./dist/index.js",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
   "engines": {
     "node": ">=22"
   },
   "exports": {
     ".": {
+      "types": "./dist/index.d.ts",
       "import": "./dist/index.js",
-      "types": "./dist/index.d.ts"
+      "default": "./dist/index.js"
     }
+  },
+  "sideEffects": false,
+  "publishConfig": {
+    "access": "public"
   },
   "scripts": {
     "build": "tsup src/index.ts --format esm --dts --clean",

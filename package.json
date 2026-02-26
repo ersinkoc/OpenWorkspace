@@ -5,9 +5,19 @@
   "type": "module",
   "description": "Google Workspace CLI + Library + MCP Server",
   "keywords": [
-    "google-workspace", "gmail", "google-calendar", "google-drive",
-    "google-sheets", "google-docs", "cli", "mcp", "mcp-server",
-    "typescript", "zero-dependency", "pipeline", "automation"
+    "google-workspace",
+    "gmail",
+    "google-calendar",
+    "google-drive",
+    "google-sheets",
+    "google-docs",
+    "cli",
+    "mcp",
+    "mcp-server",
+    "typescript",
+    "zero-dependency",
+    "pipeline",
+    "automation"
   ],
   "author": "Ersin Koc",
   "license": "MIT",
@@ -31,13 +41,13 @@
     "test:mcp": "tsx scripts/test-mcp.ts"
   },
   "devDependencies": {
-    "@types/node": "^22.0.0",
-    "@vitest/coverage-v8": "^3.0.0",
-    "tsup": "^8.3.6",
-    "tsx": "^4.19.0",
-    "turbo": "^2.4.0",
-    "typescript": "^5.7.3",
-    "vitest": "^3.0.0"
+    "@types/node": "^22.19.12",
+    "@vitest/coverage-v8": "^3.2.4",
+    "tsup": "^8.5.1",
+    "tsx": "^4.21.0",
+    "turbo": "^2.8.11",
+    "typescript": "^5.9.3",
+    "vitest": "^3.2.4"
   },
-  "packageManager": "pnpm@10.0.0"
+  "packageManager": "pnpm@10.30.3"
 }
