@@ -4,3 +4,5 @@ dist
 coverage
 *.tsbuildinfo
 nul
+.test-publish
+client_secret_*.json

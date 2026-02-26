@@ -38,7 +38,9 @@
     "clean": "turbo run clean",
     "quickstart": "tsx scripts/quickstart.ts",
     "smoke-test": "tsx scripts/smoke-test.ts",
-    "test:mcp": "tsx scripts/test-mcp.ts"
+    "test:mcp": "tsx scripts/test-mcp.ts",
+    "test:e2e": "tsx scripts/e2e-test.ts",
+    "ows": "node packages/cli/dist/cli.js"
   },
   "devDependencies": {
     "@types/node": "^22.19.12",

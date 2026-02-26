@@ -198,7 +198,7 @@ export async function main(): Promise<number> {
     {
       name: 'add',
       description: 'Authorize a Google account',
-      usage: 'ows auth add <email> [--headless] [--device]',
+      usage: 'ows auth add <email> [--headless] [--device] [--scopes gmail,calendar,drive,...]',
       async handler(args) {
         const email = args._[0];
         if (!email) {
@@ -220,9 +220,56 @@ export async function main(): Promise<number> {
           process.env['OWS_KEYRING_PASSWORD'] ?? 'openworkspace-default-key'
         );
 
+        // All available scopes by service
+        const ALL_SCOPES: Record<string, string[]> = {
+          gmail:     [SCOPES.GMAIL.MODIFY],
+          calendar:  [SCOPES.CALENDAR.FULL],
+          drive:     [SCOPES.DRIVE.FULL],
+          sheets:    [SCOPES.SHEETS.FULL],
+          docs:      [SCOPES.DOCS.FULL],
+          slides:    [SCOPES.SLIDES.FULL],
+          contacts:  [SCOPES.CONTACTS.FULL],
+          tasks:     [SCOPES.TASKS.FULL],
+          chat:      [SCOPES.CHAT.SPACES, SCOPES.CHAT.MESSAGES],
+          classroom: [SCOPES.CLASSROOM.COURSES, SCOPES.CLASSROOM.ROSTERS_READONLY],
+          forms:     [SCOPES.FORMS.FULL, SCOPES.FORMS.RESPONSES_READONLY],
+          appscript: [SCOPES.APPSCRIPT.PROJECTS],
+          people:    [SCOPES.PEOPLE.READONLY],
+          groups:    [SCOPES.GROUPS.READONLY],
+          keep:      [SCOPES.KEEP.FULL],
+        };
+
+        // Default scopes: all services
+        const scopeFlag = getStringFlag(args.flags, 'scopes');
+        let requestedScopes: string[];
+        if (scopeFlag) {
+          const services = scopeFlag.split(',').map(s => s.trim().toLowerCase());
+          const invalid = services.filter(s => !ALL_SCOPES[s]);
+          if (invalid.length > 0) {
+            console.error(`Error: Unknown services: ${invalid.join(', ')}`);
+            console.error(`Available: ${Object.keys(ALL_SCOPES).join(', ')}`);
+            return 1;
+          }
+          requestedScopes = services.flatMap(s => ALL_SCOPES[s]!);
+        } else {
+          // Default: core services (gmail, calendar, drive, sheets, docs, slides, contacts, tasks, people, forms)
+          requestedScopes = [
+            ...ALL_SCOPES['gmail']!,
+            ...ALL_SCOPES['calendar']!,
+            ...ALL_SCOPES['drive']!,
+            ...ALL_SCOPES['sheets']!,
+            ...ALL_SCOPES['docs']!,
+            ...ALL_SCOPES['slides']!,
+            ...ALL_SCOPES['contacts']!,
+            ...ALL_SCOPES['tasks']!,
+            ...ALL_SCOPES['people']!,
+            ...ALL_SCOPES['forms']!,
+          ];
+        }
+
         const auth = createAuthEngine({
           credentials: creds.value,
-          scopes: [SCOPES.GMAIL.MODIFY, SCOPES.CALENDAR.FULL, SCOPES.DRIVE.FULL],
+          scopes: requestedScopes,
           tokenStore: store,
         });
 

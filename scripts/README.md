@@ -25,6 +25,12 @@ Scripts for setting up and testing OpenWorkspace with real Google accounts.
    - Gmail API
    - Google Calendar API
    - Google Drive API
+   - Google Sheets API
+   - Google Docs API
+   - Google Slides API
+   - People API
+   - Tasks API
+   - *(Optional)* Google Chat API, Classroom API, Forms API, Apps Script API, Keep API, Cloud Identity API
 
 ## Scripts
 
@@ -78,6 +84,58 @@ Tests:
 - Sends `initialize` request and verifies the server responds
 - Sends `tools/list` and verifies expected tools (gmail, calendar, drive) are registered
 - Exits cleanly
+
+### Full E2E Test (All 15 Services)
+
+Comprehensive end-to-end test that exercises every Google Workspace service. Safe to run -- all created items are prefixed with `[OWS-TEST]` and cleaned up automatically.
+
+```bash
+pnpm test:e2e
+# or
+npx tsx scripts/e2e-test.ts
+# with a specific account:
+npx tsx scripts/e2e-test.ts --account user@gmail.com
+# skip services that need Workspace:
+npx tsx scripts/e2e-test.ts --skip chat,classroom,groups,keep
+```
+
+**Required APIs** (enable in Google Cloud Console > APIs & Services > Library):
+- Gmail API
+- Google Calendar API
+- Google Drive API
+- Google Sheets API
+- Google Docs API
+- Google Slides API
+- People API
+- Tasks API
+
+**Optional APIs** (Workspace / admin accounts only):
+- Google Chat API (requires Workspace)
+- Google Classroom API (requires educator account)
+- Cloud Identity API (requires Workspace admin)
+- Google Keep API (requires Workspace)
+- Apps Script API
+- Google Forms API
+
+**What it tests per service:**
+
+| Service    | Read-only Tests             | Create + Cleanup Tests                      |
+|------------|-----------------------------|---------------------------------------------|
+| Gmail      | List labels, search, drafts | Create draft (not sent)                     |
+| Calendar   | List calendars/events, free/busy | Create event -> delete                 |
+| Drive      | List files, search          | Create folder -> upload -> download -> delete |
+| Sheets     | -                           | Create spreadsheet -> write -> read -> append -> delete |
+| Docs       | -                           | Create doc -> read -> delete                |
+| Slides     | -                           | Create presentation -> read -> delete       |
+| Contacts   | List contacts               | Create contact -> delete                    |
+| Tasks      | List task lists              | Create list -> create task -> complete -> delete |
+| People     | Get own profile             | -                                           |
+| Chat       | List spaces                 | -                                           |
+| Classroom  | List courses                | -                                           |
+| Forms      | -                           | Create form -> read -> delete               |
+| Apps Script| List processes              | -                                           |
+| Groups     | List groups                 | -                                           |
+| Keep       | List notes                  | -                                           |
 
 ## Troubleshooting
 
