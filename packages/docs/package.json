@@ -1,6 +1,6 @@
 {
   "name": "@openworkspace/docs",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Google Docs API client for documents and content",
   "keywords": [
     "google-docs",

@@ -1,6 +1,6 @@
 {
   "name": "@openworkspace/forms",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Google Forms API client for forms and responses",
   "keywords": [
     "google-forms",

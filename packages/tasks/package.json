@@ -1,6 +1,6 @@
 {
   "name": "@openworkspace/tasks",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Google Tasks API client for task lists and tasks",
   "keywords": [
     "google-tasks",

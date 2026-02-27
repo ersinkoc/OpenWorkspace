@@ -44,7 +44,7 @@ import { people as createPeopleApi } from '@openworkspace/people';
 import { groups as createGroupsApi } from '@openworkspace/groups';
 import { keep as createKeepApi } from '@openworkspace/keep';
 
-const VERSION = '0.1.0';
+const VERSION = '0.1.1';
 
 /**
  * Safely parse an integer from a string, returning a default when the value

@@ -1,6 +1,6 @@
 {
   "name": "@openworkspace/chat",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Google Chat API client for spaces and messages",
   "keywords": [
     "google-chat",

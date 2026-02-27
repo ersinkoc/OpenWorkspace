@@ -1,6 +1,6 @@
 {
   "name": "@openworkspace/calendar",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Google Calendar API client for events, calendars, and freebusy",
   "keywords": [
     "google-calendar",

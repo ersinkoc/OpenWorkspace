@@ -551,18 +551,18 @@ describe('cli', () => {
   // ── Global flags ────────────────────────────────────────────────
 
   describe('global flags', () => {
-    it('--version should output version 0.1.0', async () => {
+    it('--version should output version 0.1.1', async () => {
       setArgs('--version');
       const code = await main();
       expect(code).toBe(0);
-      expect(logSpy).toHaveBeenCalledWith('0.1.0');
+      expect(logSpy).toHaveBeenCalledWith('0.1.1');
     });
 
-    it('-v should output version 0.1.0', async () => {
+    it('-v should output version 0.1.1', async () => {
       setArgs('-v');
       const code = await main();
       expect(code).toBe(0);
-      expect(logSpy).toHaveBeenCalledWith('0.1.0');
+      expect(logSpy).toHaveBeenCalledWith('0.1.1');
     });
 
     it('--help with no command should show help', async () => {

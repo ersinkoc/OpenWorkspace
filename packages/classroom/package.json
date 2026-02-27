@@ -1,6 +1,6 @@
 {
   "name": "@openworkspace/classroom",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Google Classroom API client for courses, assignments, and grading",
   "keywords": [
     "google-classroom",

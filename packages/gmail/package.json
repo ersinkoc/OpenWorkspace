@@ -1,6 +1,6 @@
 {
   "name": "@openworkspace/gmail",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Gmail API client for messages, threads, labels, and drafts",
   "keywords": [
     "gmail",

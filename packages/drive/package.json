@@ -1,6 +1,6 @@
 {
   "name": "@openworkspace/drive",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Google Drive API client for files, folders, and permissions",
   "keywords": [
     "google-drive",

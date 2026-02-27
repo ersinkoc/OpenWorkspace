@@ -1,6 +1,6 @@
 {
   "name": "@openworkspace/sheets",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Google Sheets API client for reading, writing, and formatting",
   "keywords": [
     "google-sheets",
