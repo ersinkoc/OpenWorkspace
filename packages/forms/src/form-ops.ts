@@ -10,6 +10,7 @@ import type {
   Info,
   BatchUpdateFormRequest,
   BatchUpdateFormResponse,
+  CreateItemRequest,
   Request,
   Item,
   Location,
@@ -182,8 +183,8 @@ export async function addQuestion(
     {
       createItem: {
         item,
-        location: location ?? { index: 0 },
-      },
+        ...(location ? { location } : {}),
+      } as CreateItemRequest,
     },
   ];
 

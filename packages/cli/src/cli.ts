@@ -47,6 +47,15 @@ import { keep as createKeepApi } from '@openworkspace/keep';
 const VERSION = '0.1.0';
 
 /**
+ * Safely parse an integer from a string, returning a default when the value
+ * is not a finite positive number.
+ */
+function parseIntSafe(value: string, defaultValue: number): number {
+  const n = parseInt(value, 10);
+  return Number.isFinite(n) && n > 0 ? n : defaultValue;
+}
+
+/**
  * Gets an authenticated HttpClient for API calls.
  *
  * Loads credentials, creates a token store, retrieves a valid access token
@@ -98,18 +107,22 @@ export async function getAuthenticatedClient(
     return { ok: false, error: token.error.message };
   }
 
-  // Create an HttpClient with an auth interceptor
+  // Create an HttpClient with an auth interceptor that refreshes tokens
   const http = createHttpClient();
-  http.interceptors.request.push((url, config) => ({
-    url,
-    config: {
-      ...config,
-      headers: {
-        ...config.headers,
-        Authorization: `Bearer ${token.value}`,
+  http.interceptors.request.push(async (url, config) => {
+    const freshToken = await auth.getToken(resolvedAccount);
+    const accessToken = freshToken.ok ? freshToken.value : token.value;
+    return {
+      url,
+      config: {
+        ...config,
+        headers: {
+          ...config.headers,
+          Authorization: `Bearer ${accessToken}`,
+        },
       },
-    },
-  }));
+    };
+  });
 
   return { ok: true, value: { http, account: resolvedAccount } };
 }
@@ -302,7 +315,18 @@ export async function main(): Promise<number> {
           }
           console.log(`Open this URL in your browser:\n${result.value.authUrl}`);
           console.log('\nPaste the authorization code here and press Enter.');
-          // Note: In production, we'd read from stdin here
+
+          const rl = await import('node:readline');
+          const reader = rl.createInterface({ input: process.stdin, output: process.stdout });
+          const code = await new Promise<string>(resolve => reader.question('Authorization code: ', resolve));
+          reader.close();
+
+          const exchangeResult = await result.value.exchange(code.trim());
+          if (!exchangeResult.ok) {
+            console.error(`Error: ${exchangeResult.error.message}`);
+            return 1;
+          }
+          console.log(`Account ${email} authorized successfully.`);
           return 0;
         }
 
@@ -672,7 +696,7 @@ export async function main(): Promise<number> {
         if (!client.ok) { console.error(`Error: ${client.error}`); return 1; }
 
         const gmail = createGmailApi(client.value.http);
-        const result = await gmail.searchMessages({ q: query, maxResults: parseInt(max) });
+        const result = await gmail.searchMessages({ q: query, maxResults: parseIntSafe(max, 20) });
         if (!result.ok) { console.error(`Error: ${result.error.message}`); return 1; }
 
         console.log(formatOutput(result.value.messages ?? [], detectFormat(args.flags)));
@@ -914,7 +938,7 @@ export async function main(): Promise<number> {
         if (!client.ok) { console.error(`Error: ${client.error}`); return 1; }
 
         const drv = createDriveApi(client.value.http);
-        const result = await drv.listFiles({ pageSize: parseInt(max) });
+        const result = await drv.listFiles({ pageSize: parseIntSafe(max, 20) });
         if (!result.ok) { console.error(`Error: ${result.error.message}`); return 1; }
 
         console.log(formatOutput(result.value.files ?? [], detectFormat(args.flags)));
@@ -938,7 +962,7 @@ export async function main(): Promise<number> {
         if (!client.ok) { console.error(`Error: ${client.error}`); return 1; }
 
         const drv = createDriveApi(client.value.http);
-        const result = await drv.searchFiles(query, { pageSize: parseInt(max) });
+        const result = await drv.searchFiles(query, { pageSize: parseIntSafe(max, 20) });
         if (!result.ok) { console.error(`Error: ${result.error.message}`); return 1; }
 
         console.log(formatOutput(result.value.files ?? [], detectFormat(args.flags)));
@@ -999,7 +1023,7 @@ export async function main(): Promise<number> {
         if (!result.ok) { console.error(`Error: ${result.error.message}`); return 1; }
 
         if (output) {
-          await fs.writeFile(path.resolve(output), result.value, 'utf-8');
+          await fs.writeFile(path.resolve(output), result.value);
           console.log(`File saved to: ${path.resolve(output)}`);
         } else {
           console.log(result.value);
@@ -1193,7 +1217,7 @@ export async function main(): Promise<number> {
 
         const output = getStringFlag(args.flags, 'output');
         if (output) {
-          await fs.writeFile(path.resolve(output), result.value, 'utf-8');
+          await fs.writeFile(path.resolve(output), result.value);
           console.log(`Document exported to: ${path.resolve(output)}`);
         } else {
           console.log(result.value);
@@ -1325,7 +1349,7 @@ export async function main(): Promise<number> {
 
         const api = createContactsApi(client.value.http);
         const result = await api.listContacts({
-          pageSize: parseInt(max),
+          pageSize: parseIntSafe(max, 20),
           personFields: 'names,emailAddresses,phoneNumbers',
         });
         if (!result.ok) { console.error(`Error: ${result.error.message}`); return 1; }
@@ -1351,7 +1375,7 @@ export async function main(): Promise<number> {
         if (!client.ok) { console.error(`Error: ${client.error}`); return 1; }
 
         const api = createContactsApi(client.value.http);
-        const result = await api.searchContacts(query, { pageSize: parseInt(max) });
+        const result = await api.searchContacts(query, { pageSize: parseIntSafe(max, 20) });
         if (!result.ok) { console.error(`Error: ${result.error.message}`); return 1; }
 
         console.log(formatOutput(result.value, detectFormat(args.flags)));
@@ -1429,7 +1453,7 @@ export async function main(): Promise<number> {
         if (!client.ok) { console.error(`Error: ${client.error}`); return 1; }
 
         const api = createTasksApi(client.value.http);
-        const result = await api.listTasks(tasklistId, { maxResults: parseInt(max) });
+        const result = await api.listTasks(tasklistId, { maxResults: parseIntSafe(max, 20) });
         if (!result.ok) { console.error(`Error: ${result.error.message}`); return 1; }
 
         console.log(formatOutput(result.value.items ?? [], detectFormat(args.flags)));
@@ -1528,7 +1552,7 @@ export async function main(): Promise<number> {
         if (!client.ok) { console.error(`Error: ${client.error}`); return 1; }
 
         const api = createChatApi(client.value.http);
-        const result = await api.listMessages(spaceName, { pageSize: parseInt(max) });
+        const result = await api.listMessages(spaceName, { pageSize: parseIntSafe(max, 20) });
         if (!result.ok) { console.error(`Error: ${result.error.message}`); return 1; }
 
         console.log(formatOutput(result.value.messages ?? [], detectFormat(args.flags)));
@@ -1581,7 +1605,7 @@ export async function main(): Promise<number> {
         if (!client.ok) { console.error(`Error: ${client.error}`); return 1; }
 
         const api = createClassroomApi(client.value.http);
-        const result = await api.listCourses({ pageSize: parseInt(max) });
+        const result = await api.listCourses({ pageSize: parseIntSafe(max, 20) });
         if (!result.ok) { console.error(`Error: ${result.error.message}`); return 1; }
 
         console.log(formatOutput(result.value.courses ?? [], detectFormat(args.flags)));
@@ -1685,7 +1709,7 @@ export async function main(): Promise<number> {
         if (!client.ok) { console.error(`Error: ${client.error}`); return 1; }
 
         const api = createFormsApi(client.value.http);
-        const result = await api.listResponses(formId, { pageSize: parseInt(max) });
+        const result = await api.listResponses(formId, { pageSize: parseIntSafe(max, 20) });
         if (!result.ok) { console.error(`Error: ${result.error.message}`); return 1; }
 
         console.log(formatOutput(result.value.responses ?? [], detectFormat(args.flags)));
@@ -1823,7 +1847,7 @@ export async function main(): Promise<number> {
         if (!client.ok) { console.error(`Error: ${client.error}`); return 1; }
 
         const api = createGroupsApi(client.value.http);
-        const result = await api.listGroups(parent, { pageSize: parseInt(max) });
+        const result = await api.listGroups(parent, { pageSize: parseIntSafe(max, 20) });
         if (!result.ok) { console.error(`Error: ${result.error.message}`); return 1; }
 
         console.log(formatOutput(result.value.groups ?? [], detectFormat(args.flags)));
@@ -1875,7 +1899,7 @@ export async function main(): Promise<number> {
         if (!client.ok) { console.error(`Error: ${client.error}`); return 1; }
 
         const api = createKeepApi(client.value.http);
-        const result = await api.listNotes({ pageSize: parseInt(max) });
+        const result = await api.listNotes({ pageSize: parseIntSafe(max, 20) });
         if (!result.ok) { console.error(`Error: ${result.error.message}`); return 1; }
 
         console.log(formatOutput(result.value.notes ?? [], detectFormat(args.flags)));

@@ -173,6 +173,13 @@ const {
 
 // ── Mock all external dependencies ─────────────────────────────────
 
+vi.mock('node:readline', () => ({
+  createInterface: vi.fn(() => ({
+    question: (_prompt: string, cb: (answer: string) => void) => cb('mock-auth-code'),
+    close: vi.fn(),
+  })),
+}));
+
 vi.mock('fs/promises', () => ({
   mkdir: vi.fn().mockResolvedValue(undefined),
   copyFile: vi.fn().mockResolvedValue(undefined),
@@ -479,7 +486,7 @@ describe('cli', () => {
       // The interceptor was pushed to mockHttpInterceptors.request
       expect(mockHttpInterceptors.request.length).toBe(1);
       const interceptor = mockHttpInterceptors.request[0] as (url: string, config: Record<string, unknown>) => unknown;
-      const output = interceptor('https://example.com', { headers: { 'X-Custom': 'yes' } });
+      const output = await interceptor('https://example.com', { headers: { 'X-Custom': 'yes' } });
       expect(output).toEqual({
         url: 'https://example.com',
         config: {
@@ -665,9 +672,10 @@ describe('cli', () => {
     });
 
     it('should handle headless flow', async () => {
+      const mockExchange = vi.fn().mockResolvedValue({ ok: true, value: {} });
       mockHeadlessFlow.mockResolvedValue({
         ok: true,
-        value: { authUrl: 'https://accounts.google.com/auth?code=xyz' },
+        value: { authUrl: 'https://accounts.google.com/auth?code=xyz', exchange: mockExchange },
       });
       setupAuthSuccess();
 
@@ -677,6 +685,7 @@ describe('cli', () => {
       expect(logSpy).toHaveBeenCalledWith(
         expect.stringContaining('https://accounts.google.com/auth?code=xyz'),
       );
+      expect(mockExchange).toHaveBeenCalledWith('mock-auth-code');
     });
 
     it('should handle browser flow failure', async () => {

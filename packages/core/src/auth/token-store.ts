@@ -123,7 +123,7 @@ export function getDefaultConfigDir(): string {
  * Ensures a directory exists, creating it recursively if needed.
  */
 async function ensureDir(dirPath: string): Promise<void> {
-  await fs.mkdir(dirPath, { recursive: true });
+  await fs.mkdir(dirPath, { recursive: true, mode: 0o700 });
 }
 
 /**
@@ -179,7 +179,7 @@ export function createFileTokenStore(
       const encrypted = encrypt(json, password);
       if (!encrypted.ok) return encrypted;
 
-      await fs.writeFile(filePath, encrypted.value, 'utf8');
+      await fs.writeFile(filePath, encrypted.value, { encoding: 'utf8', mode: 0o600 });
       return ok(undefined);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);

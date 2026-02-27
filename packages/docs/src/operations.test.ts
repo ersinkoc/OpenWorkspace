@@ -100,7 +100,7 @@ describe('documents operations', () => {
       vi.mocked(http.get).mockResolvedValueOnce(mockOk({ tabs: [{ tab: { tabProperties: { title: 'Tab1' } } }] }));
       const result = await getDocumentTabs(http, 'doc1');
       expect(result.ok).toBe(true);
-      expect(vi.mocked(http.get).mock.calls[0]?.[0]).toContain('/documents/doc1/tabs');
+      expect(vi.mocked(http.get).mock.calls[0]?.[0]).toContain('/documents/doc1?includeTabsContent=true');
     });
 
     it('should propagate error', async () => {

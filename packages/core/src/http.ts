@@ -146,6 +146,8 @@ export function createHttpClient(options: HttpClientOptions = {}): HttpClient {
     const timeoutId = setTimeout(() => controller.abort(), finalConfig.timeout ?? timeout);
 
     try {
+      const autoSerialized =
+        !!finalConfig.body && typeof finalConfig.body === 'object' && !(finalConfig.body instanceof Uint8Array);
       const body =
         finalConfig.body && typeof finalConfig.body === 'object' && !(finalConfig.body instanceof Uint8Array)
           ? JSON.stringify(finalConfig.body)
@@ -155,7 +157,7 @@ export function createHttpClient(options: HttpClientOptions = {}): HttpClient {
         method: finalConfig.method ?? 'GET',
         headers: {
           ...defaultHeaders,
-          ...(body && typeof body === 'string' ? { 'Content-Type': 'application/json' } : {}),
+          ...(autoSerialized ? { 'Content-Type': 'application/json' } : {}),
           ...finalConfig.headers,
         },
         body,
@@ -227,7 +229,8 @@ export function createHttpClient(options: HttpClientOptions = {}): HttpClient {
         );
       }
 
-      if (attempt < (finalConfig.retries ?? retries)) {
+      const idempotent = ['GET','HEAD','OPTIONS','PUT','DELETE'].includes((finalConfig.method ?? 'GET').toUpperCase());
+      if (idempotent && attempt < (finalConfig.retries ?? retries)) {
         const delay = finalConfig.retryDelay ?? retryDelay;
         await new Promise((resolve) => setTimeout(resolve, delay * Math.pow(2, attempt)));
         return executeRequest(url, config, attempt + 1);

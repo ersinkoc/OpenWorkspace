@@ -89,10 +89,19 @@ export function createEventBus(): EventBus {
 
       for (const handler of eventHandlers) {
         try {
-          void handler(payload);
+          const result = handler(payload);
+          if (result && typeof (result as Promise<void>).catch === "function") {
+            (result as Promise<void>).catch((asyncError) => {
+              if (event !== "error") {
+                this.emit("error", { event, error: asyncError, payload });
+              }
+            });
+          }
         } catch (error) {
           // Emit errors on a special channel, but don't break other handlers
-          this.emit('error', { event, error, payload });
+          if (event !== 'error') {
+            this.emit('error', { event, error, payload });
+          }
         }
 
         if (onceHandlers.has(handler)) {

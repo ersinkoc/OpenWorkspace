@@ -149,12 +149,12 @@ export async function getDocumentTabs(
   http: HttpClient,
   documentId: string,
 ): Promise<Result<DocumentTabsResponse, WorkspaceError>> {
-  const url = `${BASE_URL}/documents/${encodeURIComponent(documentId)}/tabs`;
+  const url = `${BASE_URL}/documents/${encodeURIComponent(documentId)}?includeTabsContent=true`;
 
-  const result = await http.get<DocumentTabsResponse>(url);
+  const result = await http.get<Document & { tabs?: DocumentTabsResponse['tabs'] }>(url);
   if (!result.ok) {
     return err(toWorkspaceError(result.error));
   }
 
-  return ok(result.value.data);
+  return ok({ tabs: result.value.data.tabs ?? [] });
 }

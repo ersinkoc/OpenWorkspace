@@ -13,6 +13,7 @@ import type {
   DraftListResponse,
   ListDraftsParams,
   SendOptions,
+  SendAttachment,
 } from './types.js';
 import { GMAIL_BASE_URL, GMAIL_USER_ME } from './types.js';
 
@@ -35,40 +36,43 @@ function formatRecipients(recipients: string | readonly string[]): string {
 }
 
 /**
- * Builds a minimal RFC 2822 message from SendOptions for draft creation.
- * Supports plain text and HTML bodies. Attachments in drafts follow the same
- * structure as in send.ts but are omitted here for clarity; users can include
- * the raw RFC 2822 message with attachments if needed.
+ * Generates a random MIME boundary string.
+ * Uses a timestamp + random hex to avoid collisions.
  */
-function buildDraftRfc2822(options: SendOptions): string {
-  const lines: string[] = [];
-  lines.push(`To: ${formatRecipients(options.to)}`);
-  lines.push(`Subject: ${options.subject}`);
-  if (options.cc !== undefined) lines.push(`Cc: ${formatRecipients(options.cc)}`);
-  if (options.bcc !== undefined) lines.push(`Bcc: ${formatRecipients(options.bcc)}`);
-  if (options.replyTo !== undefined) lines.push(`Reply-To: ${options.replyTo}`);
-  if (options.inReplyTo !== undefined) lines.push(`In-Reply-To: ${options.inReplyTo}`);
-  if (options.references !== undefined) lines.push(`References: ${options.references}`);
-  lines.push('MIME-Version: 1.0');
+function generateBoundary(): string {
+  const hex = Array.from({ length: 16 }, () =>
+    Math.floor(Math.random() * 256).toString(16).padStart(2, '0'),
+  ).join('');
+  return `----=_Part_${Date.now()}_${hex}`;
+}
 
+/**
+ * Appends the body section(s) of the message.
+ * Handles plain text only, HTML only, or multipart/alternative.
+ */
+function appendBodyParts(
+  lines: string[],
+  options: SendOptions,
+  altBoundary: string | undefined,
+): void {
   const hasHtml = options.html !== undefined;
   const hasBody = options.body !== undefined;
 
-  if (hasBody && hasHtml) {
-    const boundary = `----=_Draft_${Date.now()}`;
-    lines.push(`Content-Type: multipart/alternative; boundary="${boundary}"`);
+  if (altBoundary !== undefined && hasBody && hasHtml) {
+    // multipart/alternative
+    lines.push(`Content-Type: multipart/alternative; boundary="${altBoundary}"`);
     lines.push('');
-    lines.push(`--${boundary}`);
+    lines.push(`--${altBoundary}`);
     lines.push('Content-Type: text/plain; charset="UTF-8"');
     lines.push('Content-Transfer-Encoding: 7bit');
     lines.push('');
     lines.push(options.body!);
-    lines.push(`--${boundary}`);
+    lines.push(`--${altBoundary}`);
     lines.push('Content-Type: text/html; charset="UTF-8"');
     lines.push('Content-Transfer-Encoding: 7bit');
     lines.push('');
     lines.push(options.html!);
-    lines.push(`--${boundary}--`);
+    lines.push(`--${altBoundary}--`);
   } else if (hasHtml) {
     lines.push('Content-Type: text/html; charset="UTF-8"');
     lines.push('Content-Transfer-Encoding: 7bit');
@@ -79,6 +83,68 @@ function buildDraftRfc2822(options: SendOptions): string {
     lines.push('Content-Transfer-Encoding: 7bit');
     lines.push('');
     lines.push(options.body ?? '');
+  }
+}
+
+/**
+ * Appends a single attachment part to the MIME message.
+ */
+function appendAttachmentPart(lines: string[], attachment: SendAttachment): void {
+  lines.push(`Content-Type: ${attachment.mimeType}; name="${attachment.filename}"`);
+  lines.push('Content-Transfer-Encoding: base64');
+  lines.push(`Content-Disposition: attachment; filename="${attachment.filename}"`);
+  lines.push('');
+  // Break base64 into 76-char lines per RFC 2045
+  const raw = attachment.content;
+  for (let i = 0; i < raw.length; i += 76) {
+    lines.push(raw.slice(i, i + 76));
+  }
+}
+
+/**
+ * Builds an RFC 2822 message from SendOptions for draft creation.
+ * Supports plain text, HTML bodies, and attachments.
+ */
+function buildDraftRfc2822(options: SendOptions): string {
+  const lines: string[] = [];
+  const hasAttachments = options.attachments !== undefined && options.attachments.length > 0;
+  const hasHtml = options.html !== undefined;
+  const hasBody = options.body !== undefined;
+  const isMultipartBody = hasBody && hasHtml;
+
+  // Determine MIME structure
+  const mixedBoundary = hasAttachments ? generateBoundary() : undefined;
+  const altBoundary = isMultipartBody ? generateBoundary() : undefined;
+
+  // Headers
+  lines.push(`To: ${formatRecipients(options.to)}`);
+  lines.push(`Subject: ${options.subject}`);
+  if (options.cc !== undefined) lines.push(`Cc: ${formatRecipients(options.cc)}`);
+  if (options.bcc !== undefined) lines.push(`Bcc: ${formatRecipients(options.bcc)}`);
+  if (options.replyTo !== undefined) lines.push(`Reply-To: ${options.replyTo}`);
+  if (options.inReplyTo !== undefined) lines.push(`In-Reply-To: ${options.inReplyTo}`);
+  if (options.references !== undefined) lines.push(`References: ${options.references}`);
+  lines.push('MIME-Version: 1.0');
+
+  if (hasAttachments && mixedBoundary !== undefined) {
+    // multipart/mixed wrapping everything
+    lines.push(`Content-Type: multipart/mixed; boundary="${mixedBoundary}"`);
+    lines.push('');
+
+    // Body part(s)
+    lines.push(`--${mixedBoundary}`);
+    appendBodyParts(lines, options, altBoundary);
+
+    // Attachment parts
+    for (const attachment of options.attachments!) {
+      lines.push(`--${mixedBoundary}`);
+      appendAttachmentPart(lines, attachment);
+    }
+
+    lines.push(`--${mixedBoundary}--`);
+  } else {
+    // No attachments - body only
+    appendBodyParts(lines, options, altBoundary);
   }
 
   return lines.join('\r\n');

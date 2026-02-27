@@ -364,7 +364,7 @@ describe('getDocumentTabs()', () => {
     }
 
     const url = http._getHandler.mock.calls[0]?.[0] as string;
-    expect(url).toContain('/documents/doc-123/tabs');
+    expect(url).toContain('/documents/doc-123?includeTabsContent=true');
   });
 
   it('returns error when tabs fetch fails', async () => {

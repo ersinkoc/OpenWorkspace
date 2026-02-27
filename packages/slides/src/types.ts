@@ -711,6 +711,22 @@ export type ReplaceAllTextRequest = {
 };
 
 /**
+ * Deletes text from a shape or table cell.
+ */
+export type DeleteTextRequest = {
+  /** The object ID of the shape or table cell. */
+  readonly objectId: string;
+  /** The range of text to delete. */
+  readonly textRange?: {
+    readonly type?: 'FIXED_RANGE' | 'FROM_START_INDEX' | 'ALL';
+    readonly startIndex?: number;
+    readonly endIndex?: number;
+  };
+  /** Optional cell location if deleting text in a table cell. */
+  readonly cellLocation?: TableCellLocation;
+};
+
+/**
  * Deletes an object from the presentation.
  */
 export type DeleteObjectRequest = {
@@ -776,6 +792,7 @@ export type Request =
   | { readonly insertText: InsertTextRequest }
   | { readonly replaceAllText: ReplaceAllTextRequest }
   | { readonly deleteObject: DeleteObjectRequest }
+  | { readonly deleteText: DeleteTextRequest }
   | { readonly updateShapeProperties: UpdateShapePropertiesRequest }
   | { readonly updateTextStyle: UpdateTextStyleRequest };
 

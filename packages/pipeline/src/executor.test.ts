@@ -544,12 +544,12 @@ describe('executor', () => {
       expect(context.env.MY_CUSTOM_VAR).toBe('custom_value');
     });
 
-    it('should preserve process.env variables not overridden', () => {
-      // Pick a known process.env key
+    it('should NOT expose process.env variables (security)', () => {
+      // Only explicitly passed env vars should be present
       const knownKey = Object.keys(process.env)[0];
       if (knownKey) {
         const context = createContext({}, { UNRELATED: 'val' });
-        expect(context.env[knownKey]).toBe(process.env[knownKey]);
+        expect(context.env[knownKey]).toBeUndefined();
       }
     });
   });

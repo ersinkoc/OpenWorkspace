@@ -79,8 +79,8 @@ export async function downloadAttachment(
   http: HttpClient,
   attachmentName: string,
 ): Promise<Result<ArrayBuffer, WorkspaceError>> {
-  // Google Keep API uses a special download endpoint with mimeType parameter
-  const url = `${BASE_URL}/${attachmentName}?mimeType=*/*`;
+  // Use alt=media to download binary attachment content
+  const url = `${BASE_URL}/${attachmentName}?alt=media`;
 
   const result = await http.get<ArrayBuffer>(url);
   if (!result.ok) {

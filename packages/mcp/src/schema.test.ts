@@ -66,7 +66,7 @@ describe('schema', () => {
       expect(schema.properties['tags']).toEqual({
         type: 'array',
         description: 'List of tags',
-        items: { type: 'string' },
+        items: {},
       });
     });
 
@@ -227,7 +227,7 @@ describe('schema', () => {
       expect(mcpTool.inputSchema.properties['calendars']).toEqual({
         type: 'array',
         description: 'Calendar IDs',
-        items: { type: 'string' },
+        items: {},
       });
       expect(mcpTool.inputSchema.required).toEqual(['calendars']);
     });

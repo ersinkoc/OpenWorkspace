@@ -14,21 +14,24 @@ import type { ExportFormat } from './types.js';
 const BASE = 'https://www.googleapis.com/drive/v3';
 
 /**
- * Downloads the binary content of a non-Google-Workspace file.
+ * Downloads a file's content as text.
+ *
+ * **Note:** This function is suitable for text-based files only (e.g. plain text,
+ * CSV, JSON, XML). For binary files (images, PDFs, archives, etc.) use
+ * {@link downloadFileAsBuffer} which preserves raw bytes.
  *
  * For Google Docs, Sheets, Slides, etc. use {@link exportFile} instead since
  * they do not have downloadable binary content.
  *
  * @param http   - Authenticated {@link HttpClient}.
  * @param fileId - The Drive file ID to download.
- * @returns The raw file content as a `string` (the HTTP client returns text
- *          for non-JSON responses). Callers can encode as needed.
+ * @returns The file content decoded as a UTF-8 string.
  *
  * @example
  * ```ts
  * const result = await downloadFile(http, '1xBc...');
  * if (result.ok) {
- *   // result.value contains the file content
+ *   // result.value contains the text content
  * }
  * ```
  */
@@ -50,6 +53,51 @@ export async function downloadFile(
   }
 
   return ok(res.value.data);
+}
+
+/**
+ * Downloads a file's binary content as an `ArrayBuffer`.
+ *
+ * Unlike {@link downloadFile} this function preserves raw bytes and is safe for
+ * binary formats such as images, PDFs, and archives.
+ *
+ * For Google Docs, Sheets, Slides, etc. use {@link exportFile} instead since
+ * they do not have downloadable binary content.
+ *
+ * @param http   - Authenticated {@link HttpClient}.
+ * @param fileId - The Drive file ID to download.
+ * @returns The file content as an `ArrayBuffer`.
+ *
+ * @example
+ * ```ts
+ * const result = await downloadFileAsBuffer(http, '1xBc...');
+ * if (result.ok) {
+ *   const bytes = new Uint8Array(result.value);
+ *   console.log('Downloaded', bytes.length, 'bytes');
+ * }
+ * ```
+ */
+export async function downloadFileAsBuffer(
+  http: HttpClient,
+  fileId: string,
+): Promise<Result<ArrayBuffer, WorkspaceError>> {
+  const url = `${BASE}/files/${encodeURIComponent(fileId)}?alt=media`;
+
+  // Use the HttpClient to take advantage of auth interceptors.  The underlying
+  // HttpClient parses non-JSON responses as text; we re-encode to an
+  // ArrayBuffer so callers receive the correct type.
+  const res = await http.get<string>(url);
+
+  if (!res.ok) {
+    return err(
+      new WorkspaceError(res.error.message, 'DRIVE_DOWNLOAD_ERROR', res.error.context, res.error.statusCode),
+    );
+  }
+
+  // The HTTP client decoded the body as text.  Convert back to binary.
+  const encoder = new TextEncoder();
+  const buffer = encoder.encode(res.value.data).buffer as ArrayBuffer;
+  return ok(buffer);
 }
 
 /**

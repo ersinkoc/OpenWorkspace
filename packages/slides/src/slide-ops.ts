@@ -240,8 +240,9 @@ export async function updateSpeakerNotes(
   // Delete existing text and insert new text
   const requests: Request[] = [
     {
-      deleteObject: {
+      deleteText: {
         objectId: notesObjectId,
+        textRange: { type: 'ALL' },
       },
     },
     {

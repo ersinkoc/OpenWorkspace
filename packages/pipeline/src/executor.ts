@@ -269,13 +269,13 @@ export function interpolate(
       const exprCtx = toExpressionContext(context);
       const evaluated = evaluateExpression(expr, exprCtx);
       const replacement = evaluated === undefined || evaluated === null ? '' : String(evaluated);
-      result = result.replace(full, replacement);
+      result = result.split(full).join(replacement);
     } catch (e) {
       // Fall back to legacy simple path resolution for backward compatibility
       const legacyResult = legacyResolve(expr.trim(), context);
       if (legacyResult !== undefined) {
         const replacement = legacyResult === null ? '' : String(legacyResult);
-        result = result.replace(full, replacement);
+        result = result.split(full).join(replacement);
       } else {
         return err(new ValidationError(
           e instanceof Error ? e.message : 'Expression evaluation failed: ' + expr
@@ -420,7 +420,7 @@ export function createContext(
   return {
     inputs,
     outputs: {},
-    env: { ...process.env, ...env },
+    env: { ...env },
     vars: {},
   };
 }
@@ -812,6 +812,27 @@ export async function executePipeline(
 }
 
 /**
+ * Checks if a URL points to a private/internal address.
+ */
+function isPrivateUrl(urlStr: string): boolean {
+  try {
+    const parsed = new URL(urlStr);
+    const hostname = parsed.hostname;
+    if (hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '::1') return true;
+    if (hostname.startsWith('10.') || hostname.startsWith('192.168.')) return true;
+    if (hostname.startsWith('172.')) {
+      const second = parseInt(hostname.split('.')[1] ?? '0', 10);
+      if (second >= 16 && second <= 31) return true;
+    }
+    if (hostname === '169.254.169.254') return true; // AWS metadata
+    if (hostname === 'metadata.google.internal') return true; // GCP metadata
+    return false;
+  } catch {
+    return true;
+  }
+}
+
+/**
  * Creates a built-in action registry with common actions.
  */
 export function createBuiltinActions(): ActionRegistry {
@@ -853,6 +874,10 @@ export function createBuiltinActions(): ActionRegistry {
     const { url, method = 'GET', body } = params;
     if (typeof url !== 'string') {
       throw new Error('Parameter "url" must be a string');
+    }
+
+    if (isPrivateUrl(url)) {
+      throw new Error('Requests to private/internal addresses are not allowed');
     }
 
     const response = await fetch(url, {

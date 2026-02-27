@@ -397,27 +397,40 @@ describe('searchNotes()', () => {
     http = createMockHttp();
   });
 
-  it('delegates to listNotes with filter parameter', async () => {
+  it('fetches all notes and filters client-side', async () => {
     http._getHandler.mockResolvedValueOnce(mockResponse(LIST_NOTES_FIXTURE));
 
     const result = await searchNotes(http, 'meeting');
 
     expect(result.ok).toBe(true);
+    if (result.ok) {
+      // Only "Meeting Notes" matches the query "meeting" (case-insensitive)
+      expect(result.value.notes).toHaveLength(1);
+      expect(result.value.notes[0].title).toBe('Meeting Notes');
+    }
 
+    // Should NOT include filter= in URL (client-side filtering)
     const url = http._getHandler.mock.calls[0]?.[0] as string;
-    expect(url).toContain('filter=meeting');
+    expect(url).not.toContain('filter=');
   });
 
-  it('allows additional options', async () => {
+  it('allows additional options and filters client-side', async () => {
     http._getHandler.mockResolvedValueOnce(mockResponse(LIST_NOTES_FIXTURE));
 
-    await searchNotes(http, 'shopping', {
+    const result = await searchNotes(http, 'shopping', {
       pageSize: 5,
       pageToken: 'token456',
     });
 
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      // "Shopping List" matches via title
+      expect(result.value.notes).toHaveLength(1);
+      expect(result.value.notes[0].title).toBe('Shopping List');
+    }
+
     const url = http._getHandler.mock.calls[0]?.[0] as string;
-    expect(url).toContain('filter=shopping');
+    expect(url).not.toContain('filter=');
     expect(url).toContain('pageSize=5');
     expect(url).toContain('pageToken=token456');
   });
@@ -482,7 +495,7 @@ describe('downloadAttachment()', () => {
 
     const url = http._getHandler.mock.calls[0]?.[0] as string;
     expect(url).toContain('/notes/abc123/attachments/att001');
-    expect(url).toContain('mimeType=*/*');
+    expect(url).toContain('alt=media');
   });
 
   it('returns error when download fails', async () => {

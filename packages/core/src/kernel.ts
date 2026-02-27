@@ -175,13 +175,12 @@ export function createKernel(options: KernelOptions = {}): Kernel {
   const tools = new Map<string, ToolDefinition>();
   const events = createEventBus();
   const logger = options.logger ?? createLogger();
-  const metadata = new Map<string, unknown>();
-
   function createPluginContext(pluginName: string): PluginContext {
+    const pluginMetadata = new Map<string, unknown>();
     return {
       events,
       logger: logger.child(pluginName),
-      metadata,
+      metadata: pluginMetadata,
       registerCommand: (name: string, handler: CommandHandler): void => {
         const fullName = `${pluginName}:${name}`;
         commands.set(fullName, handler);
@@ -204,6 +203,10 @@ export function createKernel(options: KernelOptions = {}): Kernel {
     logger,
 
     async use(plugin: Plugin): Promise<Result<void, PluginError>> {
+      if (state === 'shutdown') {
+        return err(new PluginError('Cannot register plugin after kernel shutdown'));
+      }
+
       if (plugins.has(plugin.name)) {
         return err(new PluginError(`Plugin '${plugin.name}' is already registered`));
       }
@@ -254,7 +257,7 @@ export function createKernel(options: KernelOptions = {}): Kernel {
       logger.info('Shutting down kernel...');
       events.emit('kernel:shutdown', undefined);
 
-      for (const [name, plugin] of plugins) {
+      for (const [name, plugin] of [...plugins.entries()].reverse()) {
         if (plugin.teardown) {
           try {
             const context = pluginContexts.get(name)!;

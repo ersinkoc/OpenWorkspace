@@ -28,7 +28,7 @@ export { listFiles, searchFiles, getFile, deleteFile, renameFile, moveFile, copy
 export { uploadFile } from './upload.js';
 
 // Download / Export operations
-export { downloadFile, exportFile } from './download.js';
+export { downloadFile, downloadFileAsBuffer, exportFile } from './download.js';
 
 // Folder operations
 export { createFolder } from './folders.js';

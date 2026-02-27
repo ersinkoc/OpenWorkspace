@@ -13,7 +13,7 @@ export type JsonSchemaProperty = {
   type: string;
   description?: string;
   enum?: unknown[];
-  items?: { type: string };
+  items?: { type: string } | Record<string, unknown>;
 };
 
 /**
@@ -48,7 +48,7 @@ function parameterToSchemaProperty(param: ToolParameter): JsonSchemaProperty {
   }
 
   if (param.type === 'array') {
-    prop.items = { type: 'string' };
+    prop.items = param.items ?? {};
   }
 
   return prop;

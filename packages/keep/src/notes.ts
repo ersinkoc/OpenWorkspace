@@ -216,12 +216,13 @@ export async function deleteNote(
 
 /**
  * Searches notes by query string.
- * This is a convenience wrapper around {@link listNotes} that sets the `filter` parameter.
+ * The Keep API does not support free-text search, so this fetches all notes
+ * and filters client-side by matching the query against note titles and body text.
  *
  * @param http - Authenticated HTTP client.
- * @param query - Search query string.
- * @param options - Additional filtering / pagination parameters.
- * @returns A paginated list of matching notes.
+ * @param query - Search query string (case-insensitive substring match).
+ * @param options - Additional pagination parameters.
+ * @returns A list of matching notes.
  *
  * @example
  * ```ts
@@ -238,8 +239,21 @@ export async function searchNotes(
   query: string,
   options: Omit<ListNotesOptions, 'filter'> = {},
 ): Promise<Result<ListNotesResponse, WorkspaceError>> {
-  return listNotes(http, {
-    ...options,
-    filter: query,
+  // Keep API does not support free-text search -- fetch all and filter client-side
+  const result = await listNotes(http, options);
+  if (!result.ok) return result;
+
+  const lowerQuery = query.toLowerCase();
+  const filtered = (result.value.notes ?? []).filter(note => {
+    const title = note.title ?? '';
+    const bodyText = note.body?.text?.text ?? '';
+    const listText = (note.body?.list?.listItems ?? []).map(li => li.text?.text ?? '').join(' ');
+    return (
+      title.toLowerCase().includes(lowerQuery) ||
+      bodyText.toLowerCase().includes(lowerQuery) ||
+      listText.toLowerCase().includes(lowerQuery)
+    );
   });
+
+  return ok({ ...result.value, notes: filtered });
 }

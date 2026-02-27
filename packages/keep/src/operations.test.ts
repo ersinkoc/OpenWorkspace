@@ -133,12 +133,12 @@ describe('notes operations', () => {
   });
 
   describe('searchNotes', () => {
-    it('should call listNotes with filter parameter', async () => {
+    it('should fetch all notes and filter client-side', async () => {
       vi.mocked(http.get).mockResolvedValueOnce(mockOk({ notes: [] }));
       const result = await searchNotes(http, 'meeting');
       expect(result.ok).toBe(true);
       const url = vi.mocked(http.get).mock.calls[0]?.[0] as string;
-      expect(url).toContain('filter=meeting');
+      expect(url).not.toContain('filter=');
     });
 
     it('should propagate error', async () => {
@@ -194,7 +194,7 @@ describe('attachments operations', () => {
       expect(result.ok).toBe(true);
       if (result.ok) expect(result.value).toBe(buffer);
       const url = vi.mocked(http.get).mock.calls[0]?.[0] as string;
-      expect(url).toContain('mimeType=');
+      expect(url).toContain('alt=media');
     });
 
     it('should propagate error', async () => {

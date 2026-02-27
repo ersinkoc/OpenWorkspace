@@ -423,7 +423,7 @@ describe('addQuestion()', () => {
     expect(req.createItem?.location?.index).toBe(2);
   });
 
-  it('defaults to index 0 when location not provided', async () => {
+  it('omits location when not provided (appends at end)', async () => {
     http._postHandler.mockResolvedValueOnce(mockResponse(BATCH_UPDATE_RESPONSE_FIXTURE));
 
     await addQuestion(http, 'form-123', {
@@ -435,8 +435,8 @@ describe('addQuestion()', () => {
 
     const config = http._postHandler.mock.calls[0]?.[1] as { body: Record<string, unknown> };
     const body = config.body as { requests: unknown[] };
-    const req = body.requests[0] as { createItem?: { location?: { index?: number } } };
-    expect(req.createItem?.location?.index).toBe(0);
+    const req = body.requests[0] as { createItem?: { location?: unknown } };
+    expect(req.createItem?.location).toBeUndefined();
   });
 });
 

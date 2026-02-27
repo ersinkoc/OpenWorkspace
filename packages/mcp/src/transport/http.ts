@@ -23,6 +23,8 @@ export type HttpTransportOptions = {
   host?: string;
   /** Base path for the MCP endpoint. Defaults to '/mcp'. */
   path?: string;
+  /** Optional auth token. If set, requires Authorization: Bearer <token> on each request. */
+  authToken?: string;
 };
 
 /**
@@ -36,10 +38,12 @@ export type HttpTransport = Transport & {
 /**
  * Sets CORS headers on the response to allow cross-origin requests.
  */
-function setCorsHeaders(res: ServerResponse): void {
-  res.setHeader('Access-Control-Allow-Origin', '*');
+function setCorsHeaders(req: IncomingMessage, res: ServerResponse): void {
+  const origin = req?.headers?.origin;
+  const allowed = origin && (origin.startsWith('http://localhost') || origin.startsWith('http://127.0.0.1'));
+  res.setHeader('Access-Control-Allow-Origin', allowed ? origin : 'http://localhost');
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
 }
 
 /**
@@ -47,8 +51,18 @@ function setCorsHeaders(res: ServerResponse): void {
  */
 function readBody(req: IncomingMessage): Promise<string> {
   return new Promise((resolve, reject) => {
+    const MAX_BODY_SIZE = 1024 * 1024; // 1MB
+    let totalSize = 0;
     const chunks: Buffer[] = [];
-    req.on('data', (chunk: Buffer) => chunks.push(chunk));
+    req.on('data', (chunk: Buffer) => {
+      totalSize += chunk.length;
+      if (totalSize > MAX_BODY_SIZE) {
+        req.destroy();
+        reject(new Error('Request body too large'));
+        return;
+      }
+      chunks.push(chunk);
+    });
     req.on('end', () => resolve(Buffer.concat(chunks).toString('utf-8')));
     req.on('error', reject);
   });
@@ -80,6 +94,7 @@ export function createHttpTransport(
   const port = options.port ?? 3000;
   const host = options.host ?? '127.0.0.1';
   const basePath = options.path ?? '/mcp';
+  const authToken = options.authToken;
 
   let server: Server | null = null;
   let sseClients: ServerResponse[] = [];
@@ -105,7 +120,7 @@ export function createHttpTransport(
     req: IncomingMessage,
     res: ServerResponse,
   ): Promise<void> {
-    setCorsHeaders(res);
+    setCorsHeaders(req, res);
 
     const url = req.url ?? '/';
     const method = req.method ?? 'GET';
@@ -115,6 +130,16 @@ export function createHttpTransport(
       res.writeHead(204);
       res.end();
       return;
+    }
+
+    // Verify auth token if configured
+    if (authToken) {
+      const authHeader = req.headers['authorization'];
+      if (!authHeader || authHeader !== 'Bearer ' + authToken) {
+        res.writeHead(401, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'Unauthorized' }));
+        return;
+      }
     }
 
     // Health check endpoint
@@ -193,8 +218,9 @@ export function createHttpTransport(
 
       // Wait for the response (with a timeout)
       const timeoutMs = 30_000;
+      let timeoutId: NodeJS.Timeout;
       const timeout = new Promise<JsonRpcResponse>((resolve) => {
-        setTimeout(() => {
+        timeoutId = setTimeout(() => {
           pendingResponses.delete(requestId);
           resolve({
             jsonrpc: '2.0',
@@ -205,6 +231,7 @@ export function createHttpTransport(
       });
 
       const response = await Promise.race([responsePromise, timeout]);
+      clearTimeout(timeoutId!);
 
       res.writeHead(200, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify(response));

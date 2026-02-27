@@ -47,21 +47,22 @@ async function findOrCreateDmSpace(
     return err(spacesResult.error);
   }
 
-  // Find existing DM space
+  // Find existing DM space (check spaceType and type fields)
   const dmSpace = spacesResult.value.spaces?.find((s: Space) =>
-    s.type === 'DM' && s.name.includes(userId),
+    (s.type === 'DM' || s.spaceType === 'DM') && s.singleUserBotDm !== true,
   );
 
   if (dmSpace) {
     return ok(dmSpace.name);
   }
 
-  // Create new DM space
-  const url = `${BASE_URL}/spaces`;
+  // Create new DM space via spaces:setup with target membership
+  const url = `${BASE_URL}/spaces:setup`;
   const result = await http.post<Space>(url, {
     body: {
-      spaceType: 'DM',
-    },
+      spaceType: 'DIRECT_MESSAGE',
+      memberships: [{ member: { name: `users/${userId}`, type: 'HUMAN' } }],
+    } as unknown as Record<string, unknown>,
   });
 
   if (!result.ok) {

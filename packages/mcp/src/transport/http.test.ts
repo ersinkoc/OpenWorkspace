@@ -201,7 +201,7 @@ describe('transport/http', () => {
       const port = transport.getPort()!;
 
       const res = await request(port, '/health');
-      expect(res.headers.get('access-control-allow-origin')).toBe('*');
+      expect(res.headers.get('access-control-allow-origin')).toBe('http://localhost');
     });
   });
 
@@ -217,7 +217,7 @@ describe('transport/http', () => {
 
       const res = await request(port, '/mcp', { method: 'OPTIONS' });
       expect(res.status).toBe(204);
-      expect(res.headers.get('access-control-allow-origin')).toBe('*');
+      expect(res.headers.get('access-control-allow-origin')).toBe('http://localhost');
       expect(res.headers.get('access-control-allow-methods')).toContain('POST');
       expect(res.headers.get('access-control-allow-methods')).toContain('GET');
       expect(res.headers.get('access-control-allow-methods')).toContain('OPTIONS');
@@ -348,7 +348,7 @@ describe('transport/http', () => {
         id: 1,
         method: 'ping',
       });
-      expect(res.headers.get('access-control-allow-origin')).toBe('*');
+      expect(res.headers.get('access-control-allow-origin')).toBe('http://localhost');
     });
   });
 
@@ -515,7 +515,7 @@ describe('transport/http', () => {
       const port = transport.getPort()!;
 
       const res = await request(port, '/nonexistent');
-      expect(res.headers.get('access-control-allow-origin')).toBe('*');
+      expect(res.headers.get('access-control-allow-origin')).toBe('http://localhost');
     });
   });
 

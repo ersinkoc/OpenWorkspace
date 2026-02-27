@@ -143,7 +143,7 @@ export async function getAcl(
     return err(toWorkspaceError(result.error));
   }
 
-  return ok(result.value.data.items);
+  return ok(result.value.data.items ?? []);
 }
 
 /**

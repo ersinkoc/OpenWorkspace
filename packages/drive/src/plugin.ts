@@ -33,7 +33,7 @@ import type { WorkspaceError } from '@openworkspace/core';
 
 import { listFiles, searchFiles, getFile, deleteFile, renameFile, moveFile, copyFile } from './files.js';
 import { uploadFile } from './upload.js';
-import { downloadFile, exportFile } from './download.js';
+import { downloadFile, downloadFileAsBuffer, exportFile } from './download.js';
 import { createFolder } from './folders.js';
 import { listPermissions, shareFile, unshareFile } from './permissions.js';
 
@@ -105,10 +105,16 @@ export type DriveApi = {
   // -- Download / Export ----------------------------------------------------
 
   /**
-   * Downloads the binary content of a non-Google-Workspace file.
+   * Downloads a file's text content (suitable for text-based files only).
    * @see {@link downloadFile}
    */
   downloadFile(fileId: string): Promise<Result<string, WorkspaceError>>;
+
+  /**
+   * Downloads a file's binary content as an ArrayBuffer.
+   * @see {@link downloadFileAsBuffer}
+   */
+  downloadFileAsBuffer(fileId: string): Promise<Result<ArrayBuffer, WorkspaceError>>;
 
   /**
    * Exports a Google Workspace document to a specified format.
@@ -168,6 +174,7 @@ export function createDriveApi(http: HttpClient): DriveApi {
 
     // Download / Export
     downloadFile: (fileId) => downloadFile(http, fileId),
+    downloadFileAsBuffer: (fileId) => downloadFileAsBuffer(http, fileId),
     exportFile: (fileId, mimeType) => exportFile(http, fileId, mimeType),
 
     // Folders

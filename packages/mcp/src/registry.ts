@@ -20,6 +20,7 @@ export type ToolParameter = {
   required?: boolean;
   default?: unknown;
   enum?: unknown[];
+  items?: { type: string } | Record<string, unknown>;
 };
 
 /**

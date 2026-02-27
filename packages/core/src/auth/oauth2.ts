@@ -314,6 +314,7 @@ export function createAuthEngine(config: OAuth2Config): AuthEngine {
           if (error) {
             res.writeHead(200, { 'Content-Type': 'text/html' });
             res.end('<html><body><h1>Authentication Failed</h1><p>You can close this window.</p></body></html>');
+            clearTimeout(timeoutId);
             server.close();
             resolve(err(new AuthError(`OAuth2 error: ${error}`)));
             return;
@@ -322,6 +323,7 @@ export function createAuthEngine(config: OAuth2Config): AuthEngine {
           if (receivedState !== state) {
             res.writeHead(200, { 'Content-Type': 'text/html' });
             res.end('<html><body><h1>State Mismatch</h1><p>Authentication failed. You can close this window.</p></body></html>');
+            clearTimeout(timeoutId);
             server.close();
             resolve(err(new AuthError('OAuth2 state mismatch')));
             return;
@@ -330,6 +332,7 @@ export function createAuthEngine(config: OAuth2Config): AuthEngine {
           if (!code) {
             res.writeHead(200, { 'Content-Type': 'text/html' });
             res.end('<html><body><h1>No Code</h1><p>Authentication failed. You can close this window.</p></body></html>');
+            clearTimeout(timeoutId);
             server.close();
             resolve(err(new AuthError('No authorization code received')));
             return;
@@ -346,11 +349,12 @@ export function createAuthEngine(config: OAuth2Config): AuthEngine {
             res.end('<html><body><h1>Authentication Failed</h1><p>You can close this window.</p></body></html>');
           }
 
+          clearTimeout(timeoutId);
           server.close();
           resolve(tokenResult);
         });
 
-        server.listen(port, () => {
+        server.listen(port, '127.0.0.1', () => {
           // In a real CLI, this would open the browser
           // For now, consumers should handle opening the URL
           // The server is ready, consumer should navigate to authUrl
@@ -361,7 +365,7 @@ export function createAuthEngine(config: OAuth2Config): AuthEngine {
         (server as unknown as Record<string, unknown>)['authUrl'] = authUrl;
 
         // Timeout after 5 minutes
-        setTimeout(() => {
+        const timeoutId = setTimeout(() => {
           server.close();
           resolve(err(new AuthError('Browser authentication timed out after 5 minutes')));
         }, 5 * 60 * 1000);
@@ -531,7 +535,7 @@ export function createAuthEngine(config: OAuth2Config): AuthEngine {
         return ok(true);
       }
 
-      return ok(stored.value.expiresAt > Date.now());
+      return ok(stored.value.expiresAt > Date.now() + 5 * 60 * 1000);
     },
 
     async listAccounts() {
