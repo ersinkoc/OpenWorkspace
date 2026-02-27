@@ -347,7 +347,7 @@ vi.mock('./parser.js', async () => {
 // ── Imports (after mocks are set up) ───────────────────────────────
 
 import { main, getAuthenticatedClient, createSubcommandDispatcher } from './cli.js';
-import { loadCredentialsFile } from '@openworkspace/core';
+import { loadCredentialsFile, createAuthEngine } from '@openworkspace/core';
 import * as fs from 'fs/promises';
 
 // ── Helpers ─────────────────────────────────────────────────────────
@@ -748,6 +748,49 @@ describe('cli', () => {
       const code = await main();
       expect(code).toBe(1);
       expect(errorSpy).toHaveBeenCalledWith(expect.stringContaining('No credentials found'));
+    });
+
+    it('should authorize with custom --scopes flag', async () => {
+      setupAuthSuccess();
+      mockBrowserFlow.mockResolvedValue({ ok: true, value: {} });
+
+      setArgs('auth', 'add', 'user@test.com', '--scopes', 'gmail,drive');
+      const code = await main();
+      expect(code).toBe(0);
+      expect(createAuthEngine).toHaveBeenCalledWith(
+        expect.objectContaining({
+          scopes: [
+            'https://www.googleapis.com/auth/gmail.modify',
+            'https://www.googleapis.com/auth/drive',
+          ],
+        }),
+      );
+    });
+
+    it('should error on invalid --scopes flag', async () => {
+      setupAuthSuccess();
+
+      setArgs('auth', 'add', 'user@test.com', '--scopes', 'gmail,invalidservice');
+      const code = await main();
+      expect(code).toBe(1);
+      expect(errorSpy).toHaveBeenCalledWith('Error: Unknown services: invalidservice');
+    });
+
+    it('should handle headless exchange failure', async () => {
+      const mockExchange = vi.fn().mockResolvedValue({
+        ok: false,
+        error: { message: 'Exchange failed' },
+      });
+      mockHeadlessFlow.mockResolvedValue({
+        ok: true,
+        value: { authUrl: 'https://accounts.google.com/auth?code=xyz', exchange: mockExchange },
+      });
+      setupAuthSuccess();
+
+      setArgs('auth', 'add', 'user@test.com', '--headless');
+      const code = await main();
+      expect(code).toBe(1);
+      expect(errorSpy).toHaveBeenCalledWith('Error: Exchange failed');
     });
   });
 

@@ -678,6 +678,97 @@ describe('drafts', () => {
       const message = callBody?.['message'] as Record<string, unknown> | undefined;
       expect(typeof message?.['raw']).toBe('string');
     });
+
+    it('should include attachments in multipart/mixed for draft', async () => {
+      const draft: GmailDraft = {
+        id: 'd2',
+        message: { id: 'm2', threadId: 't2' },
+      };
+      vi.mocked(http.post).mockResolvedValueOnce(mockOk(draft));
+
+      const result = await createDraft(http, {
+        to: 'bob@example.com',
+        subject: 'Draft with attachment',
+        body: 'See attached file',
+        attachments: [
+          {
+            filename: 'test.txt',
+            mimeType: 'text/plain',
+            content: btoa('hello world'),
+          },
+        ],
+      });
+
+      expect(result.ok).toBe(true);
+      if (result.ok) {
+        expect(result.value.id).toBe('d2');
+      }
+
+      const callBody = vi.mocked(http.post).mock.calls[0]?.[1]?.body as Record<string, unknown> | undefined;
+      expect(callBody).toBeDefined();
+      const message = callBody?.['message'] as Record<string, unknown> | undefined;
+      const raw = message?.['raw'] as string;
+      expect(typeof raw).toBe('string');
+
+      // Decode base64url to verify MIME structure
+      const padded = raw.replace(/-/g, '+').replace(/_/g, '/');
+      const decoded = Buffer.from(padded, 'base64').toString('utf-8');
+      expect(decoded).toContain('multipart/mixed');
+      expect(decoded).toContain('Content-Disposition: attachment; filename="test.txt"');
+      expect(decoded).toContain('text/plain; name="test.txt"');
+      expect(decoded).toContain('Content-Transfer-Encoding: base64');
+      expect(decoded).toContain('See attached file');
+    });
+
+    it('should produce multipart/mixed wrapping multipart/alternative when body + html + attachments', async () => {
+      const draft: GmailDraft = {
+        id: 'd3',
+        message: { id: 'm3', threadId: 't3' },
+      };
+      vi.mocked(http.post).mockResolvedValueOnce(mockOk(draft));
+
+      const result = await createDraft(http, {
+        to: 'alice@example.com',
+        subject: 'Draft multi with attachment',
+        body: 'Plain text version',
+        html: '<p>HTML version</p>',
+        attachments: [
+          {
+            filename: 'report.pdf',
+            mimeType: 'application/pdf',
+            content: btoa('fake pdf content'),
+          },
+        ],
+      });
+
+      expect(result.ok).toBe(true);
+      if (result.ok) {
+        expect(result.value.id).toBe('d3');
+      }
+
+      const callBody = vi.mocked(http.post).mock.calls[0]?.[1]?.body as Record<string, unknown> | undefined;
+      expect(callBody).toBeDefined();
+      const message = callBody?.['message'] as Record<string, unknown> | undefined;
+      const raw = message?.['raw'] as string;
+      expect(typeof raw).toBe('string');
+
+      // Decode base64url to verify MIME structure
+      const padded = raw.replace(/-/g, '+').replace(/_/g, '/');
+      const decoded = Buffer.from(padded, 'base64').toString('utf-8');
+
+      // Should have multipart/mixed as the outer wrapper
+      expect(decoded).toContain('multipart/mixed');
+      // Should have multipart/alternative for body + html
+      expect(decoded).toContain('multipart/alternative');
+      // Should contain both plain and HTML parts
+      expect(decoded).toContain('text/plain');
+      expect(decoded).toContain('Plain text version');
+      expect(decoded).toContain('text/html');
+      expect(decoded).toContain('<p>HTML version</p>');
+      // Should contain the attachment
+      expect(decoded).toContain('Content-Disposition: attachment; filename="report.pdf"');
+      expect(decoded).toContain('application/pdf; name="report.pdf"');
+    });
   });
 
   describe('sendDraft', () => {
