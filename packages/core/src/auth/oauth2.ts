@@ -150,7 +150,14 @@ async function exchangeCodeForTokens(
     });
 
     if (!response.ok) {
-      const errorBody = await response.text();
+      // Sanitize error body to prevent information leakage
+      let errorBody: string;
+      try {
+        const errorData = (await response.json()) as Record<string, unknown>;
+        errorBody = String(errorData['error'] ?? 'unknown_error');
+      } catch {
+        errorBody = 'unknown_error';
+      }
       return err(new AuthError(`Token exchange failed: ${response.status} ${errorBody}`));
     }
 
@@ -194,7 +201,14 @@ async function refreshAccessToken(
     });
 
     if (!response.ok) {
-      const errorBody = await response.text();
+      // Sanitize error body to prevent information leakage
+      let errorBody: string;
+      try {
+        const errorData = (await response.json()) as Record<string, unknown>;
+        errorBody = String(errorData['error'] ?? 'unknown_error');
+      } catch {
+        errorBody = 'unknown_error';
+      }
       return err(new AuthError(`Token refresh failed: ${response.status} ${errorBody}`));
     }
 
@@ -259,6 +273,9 @@ export function createAuthEngine(config: OAuth2Config): AuthEngine {
   const accessType = config.accessType ?? 'offline';
   const prompt = config.prompt ?? 'consent';
 
+  // Track active browser flows to prevent state confusion from concurrent flows
+  const activeFlows = new Map<string, { state: string; codeVerifier: string }>();
+
   return {
     async getToken(account) {
       const stored = await tokenStore.get(account);
@@ -293,6 +310,10 @@ export function createAuthEngine(config: OAuth2Config): AuthEngine {
       const codeChallenge = sha256Base64Url(codeVerifier);
       const redirectUri = credentials.redirectUri ?? `http://localhost:${port}/callback`;
 
+      // Register this flow to prevent state confusion from concurrent flows
+      const flowKey = `${account}:${port}`;
+      activeFlows.set(flowKey, { state, codeVerifier });
+
       const authUrl = buildAuthUrl(
         credentials, scopes, redirectUri, state, codeChallenge, accessType, prompt
       );
@@ -311,6 +332,12 @@ export function createAuthEngine(config: OAuth2Config): AuthEngine {
           const code = url.searchParams.get('code');
           const error = url.searchParams.get('error');
 
+          // Retrieve the expected state for this flow before cleanup
+          const flowData = activeFlows.get(flowKey);
+
+          // Clean up flow registration
+          activeFlows.delete(flowKey);
+
           if (error) {
             res.writeHead(200, { 'Content-Type': 'text/html' });
             res.end('<html><body><h1>Authentication Failed</h1><p>You can close this window.</p></body></html>');
@@ -320,7 +347,8 @@ export function createAuthEngine(config: OAuth2Config): AuthEngine {
             return;
           }
 
-          if (receivedState !== state) {
+          // Validate state
+          if (!flowData || receivedState !== flowData.state) {
             res.writeHead(200, { 'Content-Type': 'text/html' });
             res.end('<html><body><h1>State Mismatch</h1><p>Authentication failed. You can close this window.</p></body></html>');
             clearTimeout(timeoutId);
@@ -338,20 +366,27 @@ export function createAuthEngine(config: OAuth2Config): AuthEngine {
             return;
           }
 
-          const tokenResult = await exchangeCodeForTokens(code, credentials, redirectUri, codeVerifier);
+          try {
+            const tokenResult = await exchangeCodeForTokens(code, credentials, redirectUri, flowData?.codeVerifier);
 
-          if (tokenResult.ok) {
-            await tokenStore.set(account, tokenResult.value);
-            res.writeHead(200, { 'Content-Type': 'text/html' });
-            res.end('<html><body><h1>Authentication Successful</h1><p>You can close this window.</p></body></html>');
-          } else {
-            res.writeHead(200, { 'Content-Type': 'text/html' });
-            res.end('<html><body><h1>Authentication Failed</h1><p>You can close this window.</p></body></html>');
+            if (tokenResult.ok) {
+              await tokenStore.set(account, tokenResult.value);
+              res.writeHead(200, { 'Content-Type': 'text/html' });
+              res.end('<html><body><h1>Authentication Successful</h1><p>You can close this window.</p></body></html>');
+            } else {
+              res.writeHead(200, { 'Content-Type': 'text/html' });
+              res.end('<html><body><h1>Authentication Failed</h1><p>You can close this window.</p></body></html>');
+            }
+
+            clearTimeout(timeoutId);
+            server.close();
+            resolve(tokenResult);
+          } catch (error) {
+            clearTimeout(timeoutId);
+            server.close();
+            const message = error instanceof Error ? error.message : String(error);
+            resolve(err(new AuthError(`Token exchange failed: ${message}`)));
           }
-
-          clearTimeout(timeoutId);
-          server.close();
-          resolve(tokenResult);
         });
 
         server.listen(port, '127.0.0.1', () => {
@@ -360,12 +395,20 @@ export function createAuthEngine(config: OAuth2Config): AuthEngine {
           // The server is ready, consumer should navigate to authUrl
         });
 
+        // Handle server errors (e.g., port already in use)
+        server.on('error', (serverError) => {
+          activeFlows.delete(flowKey);
+          server.close();
+          resolve(err(new AuthError(`Failed to start OAuth2 server: ${serverError.message}`)));
+        });
+
         // Expose the auth URL via a custom property on the promise
         // Consumers can access it before the promise resolves
         (server as unknown as Record<string, unknown>)['authUrl'] = authUrl;
 
         // Timeout after 5 minutes
         const timeoutId = setTimeout(() => {
+          activeFlows.delete(flowKey);
           server.close();
           resolve(err(new AuthError('Browser authentication timed out after 5 minutes')));
         }, 5 * 60 * 1000);
@@ -373,6 +416,9 @@ export function createAuthEngine(config: OAuth2Config): AuthEngine {
     },
 
     async headlessFlow(account) {
+      // eslint-disable-next-line no-console
+      console.warn('Warning: Using deprecated OAuth2 out-of-band (OOB) flow. Google has deprecated this flow. Consider using browserFlow or deviceCodeFlow instead.');
+
       const state = generateRandomString(32);
       const codeVerifier = generateRandomString(43);
       const codeChallenge = sha256Base64Url(codeVerifier);
@@ -408,7 +454,14 @@ export function createAuthEngine(config: OAuth2Config): AuthEngine {
         });
 
         if (!response.ok) {
-          const errorBody = await response.text();
+          // Sanitize error body to prevent information leakage
+          let errorBody: string;
+          try {
+            const errorData = (await response.json()) as Record<string, unknown>;
+            errorBody = String(errorData['error'] ?? 'unknown_error');
+          } catch {
+            errorBody = 'unknown_error';
+          }
           return err(new AuthError(`Device code request failed: ${response.status} ${errorBody}`));
         }
 
@@ -428,9 +481,11 @@ export function createAuthEngine(config: OAuth2Config): AuthEngine {
           interval,
           async poll() {
             const deadline = Date.now() + expiresIn * 1000;
+            // Ensure minimum interval of 1 second to prevent tight polling loops
+            let currentInterval = Math.max(interval, 1);
 
             while (Date.now() < deadline) {
-              await new Promise((resolve) => setTimeout(resolve, interval * 1000));
+              await new Promise((resolve) => setTimeout(resolve, currentInterval * 1000));
 
               const pollBody = new URLSearchParams({
                 client_id: credentials.clientId,
@@ -468,8 +523,9 @@ export function createAuthEngine(config: OAuth2Config): AuthEngine {
                 continue;
               }
               if (errorCode === 'slow_down') {
-                // Back off
-                await new Promise((resolve) => setTimeout(resolve, interval * 1000));
+                // Server requested slower polling - wait for current interval and continue
+                // The interval will be naturally limited by the server's response
+                await new Promise((resolve) => setTimeout(resolve, currentInterval * 1000));
                 continue;
               }
 

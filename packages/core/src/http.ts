@@ -83,6 +83,11 @@ export type HttpClient = {
 const DEFAULT_TIMEOUT = 30000;
 
 /**
+ * Maximum allowed timeout in milliseconds (5 minutes).
+ */
+const MAX_TIMEOUT = 5 * 60 * 1000;
+
+/**
  * Default retry count.
  */
 const DEFAULT_RETRIES = 3;
@@ -100,6 +105,12 @@ async function parseResponse(response: Response): Promise<unknown> {
 
   if (contentType.includes('application/json')) {
     return response.json();
+  }
+
+  // For empty responses, return null
+  const contentLength = response.headers.get('content-length');
+  if (contentLength === '0' || response.status === 204) {
+    return null;
   }
 
   return response.text();
@@ -143,7 +154,8 @@ export function createHttpClient(options: HttpClientOptions = {}): HttpClient {
     }
 
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), finalConfig.timeout ?? timeout);
+    const effectiveTimeout = Math.min(finalConfig.timeout ?? timeout, MAX_TIMEOUT);
+    const timeoutId = setTimeout(() => controller.abort(), effectiveTimeout);
 
     try {
       const autoSerialized =
@@ -165,6 +177,16 @@ export function createHttpClient(options: HttpClientOptions = {}): HttpClient {
       });
 
       clearTimeout(timeoutId);
+
+      // Check if the request was aborted during fetch
+      if (controller.signal.aborted) {
+        return err(
+          new NetworkError('Request was aborted', {
+            url: finalUrl,
+            aborted: true,
+          })
+        );
+      }
 
       // Handle rate limiting
       if (response.status === 429) {
@@ -224,7 +246,7 @@ export function createHttpClient(options: HttpClientOptions = {}): HttpClient {
         return err(
           new NetworkError('Request timeout', {
             url: finalUrl,
-            timeout: finalConfig.timeout ?? timeout,
+            timeout: effectiveTimeout,
           })
         );
       }

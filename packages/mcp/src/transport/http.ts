@@ -37,13 +37,22 @@ export type HttpTransport = Transport & {
 
 /**
  * Sets CORS headers on the response to allow cross-origin requests.
+ * Uses strict validation to prevent CORS misconfiguration attacks.
+ * Only allows localhost and 127.0.0.1 origins with specific ports.
  */
 function setCorsHeaders(req: IncomingMessage, res: ServerResponse): void {
   const origin = req?.headers?.origin;
-  const allowed = origin && (origin.startsWith('http://localhost') || origin.startsWith('http://127.0.0.1'));
+  // Validate origin strictly - only allow localhost and 127.0.0.1
+  const allowed = origin && (
+    /^http:\/\/localhost(:\d+)?$/.test(origin) ||
+    /^http:\/\/127\.0\.0\.1(:\d+)?$/.test(origin)
+  );
+  // Default to localhost if origin is not allowed
   res.setHeader('Access-Control-Allow-Origin', allowed ? origin : 'http://localhost');
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+  // Prevent credentials from being sent to arbitrary origins
+  res.setHeader('Vary', 'Origin');
 }
 
 /**

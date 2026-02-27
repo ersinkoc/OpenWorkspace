@@ -245,24 +245,62 @@ function toExpressionContext(ctx: ExecutionContext): ExpressionContext {
  * Interpolates expressions in a string.
  * Supports: ${{ expr }} where expr is any valid expression.
  */
+/**
+ * Safely extracts expressions from ${{ }} patterns without using regex.
+ * Prevents ReDoS attacks by using manual parsing with depth limiting.
+ */
+function extractExpressions(value: string): Array<{ full: string; expr: string }> {
+  const results: Array<{ full: string; expr: string }> = [];
+  let i = 0;
+  const maxLength = value.length;
+  const maxDepth = 1000; // Prevent excessive nesting
+
+  while (i < maxLength) {
+    // Look for ${{ pattern
+    const startIdx = value.indexOf('${{', i);
+    if (startIdx === -1) break;
+
+    // Find matching }}
+    let depth = 0;
+    let endIdx = -1;
+    let j = startIdx + 3;
+
+    while (j < maxLength && depth < maxDepth) {
+      if (value[j] === '{' && value[j - 1] === '{') {
+        depth++;
+      } else if (value[j] === '}' && value[j - 1] === '}') {
+        if (depth === 0) {
+          endIdx = j;
+          break;
+        }
+        depth--;
+      }
+      j++;
+    }
+
+    if (endIdx === -1) {
+      // No matching closing bracket found, skip this
+      i = startIdx + 3;
+      continue;
+    }
+
+    const full = value.substring(startIdx, endIdx + 1);
+    const expr = value.substring(startIdx + 3, endIdx - 1).trim();
+
+    results.push({ full, expr });
+    i = endIdx + 1;
+  }
+
+  return results;
+}
+
 export function interpolate(
   value: string,
   context: ExecutionContext
 ): Result<string, ValidationError> {
-  // Match ${{ ... }} patterns, supporting complex expressions inside
-  const pattern = /\$\{\{\s*([\s\S]*?)\s*\}\}/g;
+  // Use safe manual parsing instead of regex to prevent ReDoS
+  const replacements = extractExpressions(value);
   let result = value;
-  let match: RegExpExecArray | null;
-
-  pattern.lastIndex = 0;
-
-  const replacements: Array<{ full: string; expr: string }> = [];
-  while ((match = pattern.exec(value)) !== null) {
-    const expr = match[1];
-    if (expr !== undefined) {
-      replacements.push({ full: match[0], expr });
-    }
-  }
 
   for (const { full, expr } of replacements) {
     try {
@@ -322,6 +360,10 @@ function legacyResolve(
 
   for (const part of rest) {
     if (resolved && typeof resolved === 'object') {
+      // Prevent prototype pollution by blocking dangerous property names
+      if (part === '__proto__' || part === 'constructor' || part === 'prototype') {
+        return undefined;
+      }
       resolved = (resolved as Record<string, unknown>)[part];
     } else {
       resolved = undefined;
@@ -817,6 +859,12 @@ export async function executePipeline(
 function isPrivateUrl(urlStr: string): boolean {
   try {
     const parsed = new URL(urlStr);
+
+    // Only allow http:// and https:// schemes
+    if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+      return true;
+    }
+
     const hostname = parsed.hostname;
     if (hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '::1') return true;
     if (hostname.startsWith('10.') || hostname.startsWith('192.168.')) return true;

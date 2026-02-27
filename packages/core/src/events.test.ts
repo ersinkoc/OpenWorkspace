@@ -69,7 +69,7 @@ describe('events', () => {
         expect(() => bus.emit('nonexistent', 'data')).not.toThrow();
       });
 
-      it('should emit errors on error channel', () => {
+      it('should emit errors on error channel', async () => {
         const bus = createEventBus();
         const errorHandler = vi.fn();
         const throwingHandler = vi.fn().mockImplementation(() => {
@@ -79,6 +79,8 @@ describe('events', () => {
         bus.on('test', throwingHandler);
         bus.emit('test', 'data');
         expect(throwingHandler).toHaveBeenCalled();
+        // Wait for setImmediate to complete
+        await new Promise(resolve => setImmediate(resolve));
         expect(errorHandler).toHaveBeenCalled();
       });
     });

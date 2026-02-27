@@ -5,6 +5,7 @@
  * @module
  */
 
+import * as crypto from 'node:crypto';
 import type { HttpClient, Result } from '@openworkspace/core';
 import { ok, NetworkError } from '@openworkspace/core';
 import type { GmailMessage, SendOptions, SendAttachment } from './types.js';
@@ -12,20 +13,28 @@ import { GMAIL_BASE_URL, GMAIL_USER_ME } from './types.js';
 
 /**
  * Generates a random MIME boundary string.
- * Uses a timestamp + random hex to avoid collisions.
+ * Uses cryptographically secure random bytes to avoid collisions.
  */
 function generateBoundary(): string {
-  const hex = Array.from({ length: 16 }, () =>
-    Math.floor(Math.random() * 256).toString(16).padStart(2, '0'),
-  ).join('');
-  return `----=_Part_${Date.now()}_${hex}`;
+  const randomBytes = crypto.randomBytes(16).toString('hex');
+  return `----=_Part_${Date.now()}_${randomBytes}`;
+}
+
+/**
+ * Sanitizes email header values to prevent header injection attacks.
+ * Removes newlines and null characters.
+ */
+function sanitizeHeader(value: string): string {
+  // Remove CR, LF, and null characters to prevent header injection
+  return value.replace(/[\r\n\0]/g, '');
 }
 
 /**
  * Joins one or more email addresses into a comma-separated string.
  */
 function formatRecipients(recipients: string | readonly string[]): string {
-  return typeof recipients === 'string' ? recipients : recipients.join(', ');
+  const formatted = typeof recipients === 'string' ? recipients : recipients.join(', ');
+  return sanitizeHeader(formatted);
 }
 
 /**
@@ -57,12 +66,12 @@ function buildRfc2822Message(options: SendOptions): string {
 
   // Headers
   lines.push(`To: ${formatRecipients(options.to)}`);
-  lines.push(`Subject: ${options.subject}`);
+  lines.push(`Subject: ${sanitizeHeader(options.subject)}`);
   if (options.cc !== undefined) lines.push(`Cc: ${formatRecipients(options.cc)}`);
   if (options.bcc !== undefined) lines.push(`Bcc: ${formatRecipients(options.bcc)}`);
-  if (options.replyTo !== undefined) lines.push(`Reply-To: ${options.replyTo}`);
-  if (options.inReplyTo !== undefined) lines.push(`In-Reply-To: ${options.inReplyTo}`);
-  if (options.references !== undefined) lines.push(`References: ${options.references}`);
+  if (options.replyTo !== undefined) lines.push(`Reply-To: ${sanitizeHeader(options.replyTo)}`);
+  if (options.inReplyTo !== undefined) lines.push(`In-Reply-To: ${sanitizeHeader(options.inReplyTo)}`);
+  if (options.references !== undefined) lines.push(`References: ${sanitizeHeader(options.references)}`);
   lines.push('MIME-Version: 1.0');
 
   if (hasAttachments && mixedBoundary !== undefined) {

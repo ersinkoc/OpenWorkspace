@@ -92,15 +92,23 @@ export function createEventBus(): EventBus {
           const result = handler(payload);
           if (result && typeof (result as Promise<void>).catch === "function") {
             (result as Promise<void>).catch((asyncError) => {
+              // Prevent infinite error loops
               if (event !== "error") {
-                this.emit("error", { event, error: asyncError, payload });
+                // Use setImmediate to prevent stack overflow from recursive errors
+                setImmediate(() => {
+                  this.emit("error", { event, error: asyncError, payload });
+                });
               }
             });
           }
         } catch (error) {
           // Emit errors on a special channel, but don't break other handlers
+          // Prevent infinite error loops
           if (event !== 'error') {
-            this.emit('error', { event, error, payload });
+            // Use setImmediate to prevent stack overflow from recursive errors
+            setImmediate(() => {
+              this.emit('error', { event, error, payload });
+            });
           }
         }
 

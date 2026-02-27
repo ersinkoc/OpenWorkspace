@@ -107,16 +107,36 @@ export function getDefaultConfigDir(): string {
   const platform = os.platform();
   const home = os.homedir();
 
+  // Validate home directory
+  if (!home || !isValidPath(home)) {
+    throw new AuthError('Invalid home directory path');
+  }
+
+  let configDir: string;
+
   if (platform === 'darwin') {
-    return path.join(home, 'Library', 'Application Support', 'openworkspace');
+    configDir = path.join(home, 'Library', 'Application Support', 'openworkspace');
+  } else if (platform === 'win32') {
+    const appData = process.env['APPDATA'];
+    if (appData && !isValidPath(appData)) {
+      throw new AuthError('Invalid APPDATA environment variable');
+    }
+    configDir = path.join(appData ?? path.join(home, 'AppData', 'Roaming'), 'openworkspace');
+  } else {
+    // Linux and others: XDG
+    const xdgConfig = process.env['XDG_CONFIG_HOME'];
+    if (xdgConfig && !isValidPath(xdgConfig)) {
+      throw new AuthError('Invalid XDG_CONFIG_HOME environment variable');
+    }
+    configDir = path.join(xdgConfig ?? path.join(home, '.config'), 'openworkspace');
   }
-  if (platform === 'win32') {
-    const appData = process.env['APPDATA'] ?? path.join(home, 'AppData', 'Roaming');
-    return path.join(appData, 'openworkspace');
+
+  // Final validation
+  if (!isValidPath(configDir)) {
+    throw new AuthError('Invalid config directory path');
   }
-  // Linux and others: XDG
-  const xdgConfig = process.env['XDG_CONFIG_HOME'] ?? path.join(home, '.config');
-  return path.join(xdgConfig, 'openworkspace');
+
+  return configDir;
 }
 
 /**
@@ -124,6 +144,25 @@ export function getDefaultConfigDir(): string {
  */
 async function ensureDir(dirPath: string): Promise<void> {
   await fs.mkdir(dirPath, { recursive: true, mode: 0o700 });
+  // Verify permissions were set correctly (umask can affect this)
+  try {
+    await fs.chmod(dirPath, 0o700);
+  } catch {
+    // Ignore errors on Windows or if permissions can't be changed
+  }
+}
+
+/**
+ * Validates that a path does not contain path traversal sequences.
+ * Prevents directory traversal attacks.
+ */
+function isValidPath(path: string): boolean {
+  // Check for common path traversal patterns
+  if (path.includes('..')) return false;
+  if (path.includes('~')) return false;
+  // Check for null bytes
+  if (path.includes('\0')) return false;
+  return true;
 }
 
 /**

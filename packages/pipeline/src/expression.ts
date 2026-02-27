@@ -368,10 +368,12 @@ class Parser {
       const right = this.parseAddition();
       const l = left as number;
       const r = right as number;
-      if (op === 'gt') left = l > r;
-      else if (op === 'gte') left = l >= r;
-      else if (op === 'lt') left = l < r;
-      else left = l <= r;
+      // Use epsilon comparison for floating point numbers to handle precision issues
+      const EPSILON = 1e-10;
+      if (op === 'gt') left = l > r + EPSILON;
+      else if (op === 'gte') left = l >= r - EPSILON;
+      else if (op === 'lt') left = l < r - EPSILON;
+      else left = l <= r + EPSILON;
     }
 
     return left;

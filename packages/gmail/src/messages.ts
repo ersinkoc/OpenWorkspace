@@ -111,12 +111,21 @@ export async function getMessage(
  * });
  * ```
  */
+/**
+ * Maximum number of messages allowed in a batch operation.
+ */
+const MAX_BATCH_SIZE = 1000;
+
 export async function batchModify(
   http: HttpClient,
   params: BatchModifyParams,
 ): Promise<Result<void, NetworkError>> {
   if (params.ids.length === 0) {
     return ok(undefined);
+  }
+
+  if (params.ids.length > MAX_BATCH_SIZE) {
+    return err(new NetworkError(`Batch size exceeds maximum of ${MAX_BATCH_SIZE} messages`));
   }
 
   const url = `${GMAIL_BASE_URL}/${GMAIL_USER_ME}/messages/batchModify`;
@@ -149,6 +158,10 @@ export async function batchDelete(
 ): Promise<Result<void, NetworkError>> {
   if (params.ids.length === 0) {
     return ok(undefined);
+  }
+
+  if (params.ids.length > MAX_BATCH_SIZE) {
+    return err(new NetworkError(`Batch size exceeds maximum of ${MAX_BATCH_SIZE} messages`));
   }
 
   const url = `${GMAIL_BASE_URL}/${GMAIL_USER_ME}/messages/batchDelete`;
