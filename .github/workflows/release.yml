@@ -11,6 +11,10 @@ on:
         options:
           - "true"
           - "false"
+      tag:
+        description: Git tag to create (e.g. v0.1.0). Leave empty to skip tagging.
+        required: false
+        type: string
 
 permissions:
   contents: write
@@ -60,3 +64,18 @@ jobs:
         run: pnpm -r publish --access public --no-git-checks
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      - name: Create git tag
+        if: inputs.dry-run == 'false' && inputs.tag != ''
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git tag -a "${{ inputs.tag }}" -m "Release ${{ inputs.tag }}"
+          git push origin "${{ inputs.tag }}"
+
+      - name: Create GitHub Release
+        if: inputs.dry-run == 'false' && inputs.tag != ''
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ inputs.tag }}
+          generate_release_notes: true

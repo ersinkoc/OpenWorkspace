@@ -2,11 +2,12 @@
 
 > Zero-dependency TypeScript toolkit for Google Workspace -- CLI, programmatic API, and MCP Server in one monorepo.
 
+[![CI](https://github.com/ersinkoc/OpenWorkspace/actions/workflows/ci.yml/badge.svg)](https://github.com/ersinkoc/OpenWorkspace/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Node.js](https://img.shields.io/badge/Node.js-%3E%3D22-green.svg)](https://nodejs.org/)
 [![TypeScript](https://img.shields.io/badge/TypeScript-strict-blue.svg)](https://www.typescriptlang.org/)
 [![Coverage](https://img.shields.io/badge/Coverage-100%25-brightgreen.svg)](#testing)
-[![Tests](https://img.shields.io/badge/Tests-2%2C346-brightgreen.svg)](#testing)
+[![Tests](https://img.shields.io/badge/Tests-2%2C356-brightgreen.svg)](#testing)
 
 **OpenWorkspace** (`@openworkspace/*`) provides type-safe access to 15 Google Workspace services through three interfaces: a programmatic TypeScript API, a zero-dependency CLI (`ows`), and a Model Context Protocol (MCP) server with 28 tools for AI assistants.
 
@@ -27,7 +28,7 @@ npm install @openworkspace/core @openworkspace/gmail
 - **Micro-kernel plugin architecture** -- each service is a standalone, independently installable package
 - **ESM-only, TypeScript strict mode** -- modern, tree-shakeable modules
 - **Node.js >= 22** -- leverages native fetch, crypto, and other built-in APIs
-- **2,346 tests, 100% statement coverage** -- across all 19 packages
+- **2,356 tests, 100% statement coverage** -- across all 19 packages
 
 ---
 
@@ -250,7 +251,7 @@ pnpm build          # Build all packages (topological order via Turbo)
 ### Testing
 
 ```bash
-pnpm test           # Run all 2,346 tests
+pnpm test           # Run all 2,356 tests
 pnpm test:coverage  # Run tests with coverage (100% statement coverage)
 pnpm typecheck      # TypeScript strict mode check
 ```
@@ -261,6 +262,7 @@ pnpm typecheck      # TypeScript strict mode check
 pnpm quickstart     # Interactive setup wizard for Google OAuth
 pnpm smoke-test     # Run CLI commands against a real Google account
 pnpm test:mcp       # Test MCP server via stdio JSON-RPC
+pnpm test:e2e       # Full E2E test across all 15 services
 ```
 
 See [scripts/README.md](scripts/README.md) for prerequisites and detailed setup instructions.
@@ -305,10 +307,20 @@ OpenWorkspace supports two authentication methods:
 ### OAuth 2.0 (User Accounts)
 
 ```bash
+# Browser flow (default -- opens browser for consent)
 ows auth add ersin@example.com
+
+# Headless flow (for servers -- paste the authorization code)
+ows auth add ersin@example.com --headless
+
+# Device code flow (for constrained devices)
+ows auth add ersin@example.com --device
+
+# Limit scopes to specific services
+ows auth add ersin@example.com --scopes gmail,calendar,drive
 ```
 
-This launches the OAuth 2.0 device code flow. Tokens are encrypted and stored locally.
+Tokens are encrypted and stored locally. Auto-refresh is handled transparently.
 
 ### Service Accounts
 
