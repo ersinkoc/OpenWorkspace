@@ -4,6 +4,7 @@
  * in a single request.
  */
 
+import * as crypto from 'node:crypto';
 import type { HttpClient, Result } from '@openworkspace/core';
 import { ok, err, WorkspaceError } from '@openworkspace/core';
 import type { DriveFile, UploadOptions } from './types.js';
@@ -47,7 +48,9 @@ export async function uploadFile(
   if (opts.description) metadata['description'] = opts.description;
 
   // Build the multipart/related body per RFC 2387.
-  const boundary = `openworkspace_${Date.now()}_${Math.random().toString(36).slice(2)}`;
+  // Use cryptographically secure random bytes for boundary generation
+  const randomBytes = crypto.randomBytes(16).toString('hex');
+  const boundary = `openworkspace_${Date.now()}_${randomBytes}`;
   const metadataJson = JSON.stringify(metadata);
 
   const encoder = new TextEncoder();

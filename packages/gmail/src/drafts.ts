@@ -5,6 +5,7 @@
  * @module
  */
 
+import * as crypto from 'node:crypto';
 import type { HttpClient, Result } from '@openworkspace/core';
 import { ok, NetworkError } from '@openworkspace/core';
 import type {
@@ -37,12 +38,10 @@ function formatRecipients(recipients: string | readonly string[]): string {
 
 /**
  * Generates a random MIME boundary string.
- * Uses a timestamp + random hex to avoid collisions.
+ * Uses cryptographically secure random bytes to avoid collisions.
  */
 function generateBoundary(): string {
-  const hex = Array.from({ length: 16 }, () =>
-    Math.floor(Math.random() * 256).toString(16).padStart(2, '0'),
-  ).join('');
+  const hex = crypto.randomBytes(16).toString('hex');
   return `----=_Part_${Date.now()}_${hex}`;
 }
 

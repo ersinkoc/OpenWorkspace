@@ -77,10 +77,12 @@ export async function getAuthenticatedClient(
     return { ok: false, error: 'No credentials found. Run `ows auth credentials <path>` first.' };
   }
 
-  const store = createTokenStore(
-    'file',
-    process.env['OWS_KEYRING_PASSWORD'] ?? 'openworkspace-default-key',
-  );
+  const password = process.env['OWS_KEYRING_PASSWORD'];
+  if (!password) {
+    return { ok: false, error: 'OWS_KEYRING_PASSWORD environment variable is required for file token store' };
+  }
+
+  const store = createTokenStore('file', password);
 
   const auth = createAuthEngine({
     credentials: creds.value,

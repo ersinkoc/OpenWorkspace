@@ -227,20 +227,31 @@ export function createHttpTransport(
 
       // Wait for the response (with a timeout)
       const timeoutMs = 30_000;
-      let timeoutId: NodeJS.Timeout;
+      let timeoutId: NodeJS.Timeout | undefined;
+      let resolved = false;
+
       const timeout = new Promise<JsonRpcResponse>((resolve) => {
         timeoutId = setTimeout(() => {
-          pendingResponses.delete(requestId);
-          resolve({
-            jsonrpc: '2.0',
-            id: requestId,
-            error: { code: -32603, message: 'Request timed out' },
-          });
+          // Only resolve if not already resolved (race condition protection)
+          if (!resolved && pendingResponses.has(requestId)) {
+            resolved = true;
+            pendingResponses.delete(requestId);
+            resolve({
+              jsonrpc: '2.0',
+              id: requestId,
+              error: { code: -32603, message: 'Request timed out' },
+            });
+          }
         }, timeoutMs);
       });
 
       const response = await Promise.race([responsePromise, timeout]);
-      clearTimeout(timeoutId!);
+      resolved = true;
+      if (timeoutId) {
+        clearTimeout(timeoutId);
+      }
+      // Clean up pending response if timeout didn't fire
+      pendingResponses.delete(requestId);
 
       res.writeHead(200, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify(response));
@@ -265,8 +276,24 @@ export function createHttpTransport(
 
     sseClients.push(res);
 
-    req.on('close', () => {
+    // Set up cleanup function
+    const cleanup = (): void => {
       sseClients = sseClients.filter((c) => c !== res);
+    };
+
+    // Clean up on request close
+    req.on('close', cleanup);
+
+    // Set a timeout to prevent indefinite connections (30 minutes)
+    const timeoutId = setTimeout(() => {
+      cleanup();
+      res.end();
+    }, 30 * 60 * 1000);
+
+    // Clean up timeout when response finishes
+    res.on('finish', () => {
+      clearTimeout(timeoutId);
+      cleanup();
     });
   }
 

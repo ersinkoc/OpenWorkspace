@@ -396,6 +396,7 @@ describe('cli', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     process.env['NODE_ENV'] = 'test';
+    process.env['OWS_KEYRING_PASSWORD'] = 'test-password';
     savedArgv = process.argv;
     logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
     errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});

@@ -97,6 +97,10 @@ function getNestedValue(obj: Record<string, unknown>, path: string): unknown {
     if (current === null || current === undefined || typeof current !== 'object') {
       return undefined;
     }
+    // Prevent prototype pollution
+    if (!isSafeKey(part)) {
+      return undefined;
+    }
     current = (current as Record<string, unknown>)[part];
   }
 
@@ -106,6 +110,13 @@ function getNestedValue(obj: Record<string, unknown>, path: string): unknown {
 /**
  * Sets a nested value in an object using a dotted path.
  */
+/**
+ * Validates that a key is safe to use (not a prototype pollution vector).
+ */
+function isSafeKey(key: string): boolean {
+  return key !== '__proto__' && key !== 'constructor' && key !== 'prototype';
+}
+
 function setNestedValue(obj: Record<string, unknown>, path: string, value: unknown): void {
   const parts = path.split('.');
   let current: Record<string, unknown> = obj;
@@ -113,6 +124,11 @@ function setNestedValue(obj: Record<string, unknown>, path: string, value: unkno
   for (let i = 0; i < parts.length - 1; i++) {
     const part = parts[i];
     if (!part) continue;
+
+    // Prevent prototype pollution
+    if (!isSafeKey(part)) {
+      throw new Error(`Invalid key: ${part}`);
+    }
 
     const next = current[part];
     if (next === null || next === undefined || typeof next !== 'object' || Array.isArray(next)) {
@@ -123,6 +139,10 @@ function setNestedValue(obj: Record<string, unknown>, path: string, value: unkno
 
   const lastPart = parts[parts.length - 1];
   if (lastPart) {
+    // Prevent prototype pollution on final key
+    if (!isSafeKey(lastPart)) {
+      throw new Error(`Invalid key: ${lastPart}`);
+    }
     current[lastPart] = value;
   }
 }
@@ -138,6 +158,11 @@ function deleteNestedValue(obj: Record<string, unknown>, path: string): boolean 
     const part = parts[i];
     if (!part) return false;
 
+    // Prevent prototype pollution
+    if (!isSafeKey(part)) {
+      return false;
+    }
+
     const next = current[part];
     if (next === null || next === undefined || typeof next !== 'object' || Array.isArray(next)) {
       return false;
@@ -147,6 +172,10 @@ function deleteNestedValue(obj: Record<string, unknown>, path: string): boolean 
 
   const lastPart = parts[parts.length - 1];
   if (lastPart && lastPart in current) {
+    // Prevent prototype pollution on final key
+    if (!isSafeKey(lastPart)) {
+      return false;
+    }
     delete current[lastPart];
     return true;
   }
